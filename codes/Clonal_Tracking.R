@@ -29,6 +29,10 @@ clonal_tracking <- function(Seurat_RObj_path="./data/Ali_Tcell_combined.RDATA",
     install.packages("Seurat")
     require(Seurat, quietly = TRUE)
   }
+  if(!require(xlsx, quietly = TRUE)) {
+    install.packages("xlsx")
+    require(xlsx, quietly = TRUE)
+  }
   if(!require(ggplot2, quietly = TRUE)) {
     install.packages("ggplot2")
     require(ggplot2, quietly = TRUE)
@@ -71,22 +75,35 @@ clonal_tracking <- function(Seurat_RObj_path="./data/Ali_Tcell_combined.RDATA",
   cluster_17_clones_meta.data <- Seurat_Obj@meta.data[which(Seurat_Obj@meta.data$clone_id %in% cluster_17_clone_ids),]
   
   ### make a clone summary table
-  unique_clone_ids <- unique(cluster_17_clones_meta.data$clone_id)
-  clone_summary_table <- data.frame(clone_id=unique_clone_ids,
-                                    total_count=0,
-                                    cdr3a=cluster_17_clones_meta.data$cdr3a[which()])
+  ### here I checked same match.cdr always has the same clone_id
+  unique_clone_idx <- which(!duplicated(cluster_17_clones_meta.data$clone_id))
+  clone_summary_table <- data.frame(clone_id=cluster_17_clones_meta.data$clone_id[unique_clone_idx],
+                                    cdr_ab=cluster_17_clones_meta.data$match.cdr[unique_clone_idx])
+  rownames(clone_summary_table) <- clone_summary_table$clone_id
   
-  length(which(duplicated(cluster_17_clones_meta.data$clone_id)))
-  length(which(duplicated(cluster_17_clones_meta.data$cdr3a_nucseq)))
-  length(which(duplicated(cluster_17_clones_meta.data$cdr3b_nucseq)))
+  ### add time point counts and the total count of the clonotypes
+  ### first you should check unique(cluster_17_clones_meta.data$Day)
+  time_points <- c("d0", "d5", "d12", "d28", "d60", "d90", "d120", "d180")
+  clone_summary_table[time_points] <- 0
+  clone_summary_table$total_count <- 0
   
-  ### make a lineage summary table
+  ### fill out the counts
+  tp_indicies <- lapply(time_points, function(x) which(cluster_17_clones_meta.data$Day == x))
+  names(tp_indicies) <- time_points
+  for(clone in rownames(clone_summary_table)) {
+    clone_idx <- which(cluster_17_clones_meta.data$clone_id == clone)
+    for(tp in time_points) {
+      clone_summary_table[clone,tp] <- length(intersect(clone_idx, tp_indicies[[tp]]))
+    }
+  }
+  clone_summary_table$total_count <- as.numeric(apply(clone_summary_table[,time_points], 1, sum))
   
+  ### order by the total_count
+  clone_summary_table <- clone_summary_table[order(-clone_summary_table$total_count),]
   
-  
-  
-  
-  
+  ### save the table as Excel file
+  write.xlsx2(clone_summary_table, file = paste0(outputDir, "Clone_Count_Summary.xlsx"),
+              sheetName = "CLONE_SUMMARY", row.names = FALSE)
   
   
   
