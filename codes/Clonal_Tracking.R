@@ -53,6 +53,10 @@ clonal_tracking <- function(Seurat_RObj_path="./data/Ali_Tcell_combined.RDATA",
     install.packages("viridis")
     require(viridis, quietly = TRUE)
   }
+  if(!require(ggsci, quietly = TRUE)) {
+    install.packages("ggsci")
+    require(ggsci, quietly = TRUE)
+  }
   
   ### load the Seurat object and save the object name
   tmp_env <- new.env()
@@ -105,22 +109,39 @@ clonal_tracking <- function(Seurat_RObj_path="./data/Ali_Tcell_combined.RDATA",
   write.xlsx2(clone_summary_table, file = paste0(outputDir, "Clone_Count_Summary.xlsx"),
               sheetName = "CLONE_SUMMARY", row.names = FALSE)
   
+  ### Alluvial plot - visualization of the lineage tracing
   
+  ### only keep lineages from the clone_summary_table
+  ### * lineage = a clone that appears in more than one (2, 3, ...) time points
+  lineage_table <- clone_summary_table[apply(clone_summary_table[,time_points], 1, function(x) {
+    return(length(which(x > 0)) > 1)
+  }),]
   
-  ### ggalluvial example
-  data(vaccinations)
-  levels(vaccinations$response) <- rev(levels(vaccinations$response))
-  ggplot(vaccinations,
-         aes(x = survey, stratum = response, alluvium = subject,
-             y = freq,
-             fill = response, label = response)) +
-    scale_x_discrete(expand = c(.1, .1)) +
-    geom_flow() +
-    geom_stratum(alpha = .5) +
-    geom_text(stat = "stratum", size = 3) +
-    theme(legend.position = "none") +
-    ggtitle("vaccination survey responses at three points in time")
+  ### get an input data frame for the alluvial plot
+  total_rows <- length(which(lineage_table[,time_points] > 0))
+  plot_df <- data.frame(Time=rep("", total_rows),
+                        Clone_Size=rep(0, total_rows),
+                        Clone=rep("", total_rows),
+                        CDR3=rep("", total_rows))
+  cnt <- 1
+  for(i in 1:nrow(lineage_table)) {
+    for(tp in time_points) {
+      if(lineage_table[i,tp] > 0) {
+        plot_df[cnt,] <- c(tp,
+                           lineage_table[i,tp],
+                           lineage_table$clone_id[i],
+                           lineage_table$cdr_ab[i])
+        cnt <- cnt + 1
+      }
+    }
+  }
+  plot_df$Time <- factor(plot_df$Time, levels = time_points)
   
+  ### numerize the clone_size column
+  plot_df$Clone_Size <- as.numeric(plot_df$Clone_Size)
+  
+  ### theme that draws dotted lines for each y-axis ticks
+  ### this function is from "immunarch" package
   theme_cleveland2 <- function(rotate = TRUE) {
     if (rotate) {
       theme(
@@ -142,21 +163,133 @@ clonal_tracking <- function(Seurat_RObj_path="./data/Ali_Tcell_combined.RDATA",
     }
   }
   
-  ### test
-  temp <- data.frame(height=rep(c(1:5), 2),
-                     label=c("A", "B", "C")[sample(3, 10, replace = TRUE)],
-                     Time=c("1", "5", "10")[sample(3, 10, replace = TRUE)],
-                     connection=sample(5, 10, replace = TRUE))
-  ggplot(vaccinations,
-         aes(x = survey, stratum = response, alluvium = subject,
-             y = freq,
-             fill = response, label = response)) +
-    scale_x_discrete(expand = c(.1, .1)) +
+  ### draw the alluvial plot
+  ggplot(plot_df,
+         aes(x = Time, stratum = Clone, alluvium = Clone,
+             y = Clone_Size,
+             fill = Clone, label = CDR3)) +
+    ggtitle("Clonal Tracing of the TFH-related Cells (The Cluster 17)") +
     geom_flow() +
     geom_stratum(alpha = 1) +
-    geom_text(stat = "stratum", size = 3) +
-    theme_pubr(legend = "right") + rotate_x_text(90) + theme_cleveland2() +
-    scale_fill_viridis(discrete = T)
+    geom_text(stat = "stratum", size = 0.8) +
+    rotate_x_text(90) +
+    theme_pubr(legend = "none") +
+    theme(axis.title.x = element_blank()) +
+    theme_cleveland2() +
+    scale_fill_viridis(discrete = T) +
+    scale_y_continuous(expand = c(0, 0), limits = c(0, NA))
+  ggsave(file = paste0(outputDir, "TFH_Cluster_17_Clonal_Tracing.png"), width = 18, height = 9, dpi = 300)
+  
+  
+  ### separate the LN and PB cells
+  clone_summary_table_LNPB <- data.frame(sapply(clone_summary_table, function(x) c(rbind(x, x, x))),
+                                         stringsAsFactors = FALSE, check.names = FALSE)
+  clone_summary_table_LNPB <- data.frame(clone_summary_table_LNPB[,c("clone_id", "cdr_ab")],
+                                         cell_type=rep(c("LN", "PB", "ALL"), nrow(clone_summary_table)),
+                                         sapply(clone_summary_table_LNPB[,c(time_points, "total_count")],
+                                                as.numeric),
+                                         stringsAsFactors = FALSE, check.names = FALSE)
+  rownames(clone_summary_table_LNPB) <- paste(c(rbind(rownames(clone_summary_table),
+                                                      rownames(clone_summary_table),
+                                                      rownames(clone_summary_table))),
+                                              c("LN", "PB", "ALL"), sep = "_")
+  
+  ### fill out the new table
+  for(i in 1:nrow(clone_summary_table_LNPB)) {
+    if(clone_summary_table_LNPB$cell_type[i] != "ALL") {
+      clone_idx <- intersect(which(cluster_17_clones_meta.data$clone_id == clone_summary_table_LNPB$clone_id[i]),
+                             which(cluster_17_clones_meta.data$Tissue == clone_summary_table_LNPB$cell_type[i]))
+      for(tp in time_points) {
+        clone_summary_table_LNPB[i,tp] <- length(intersect(clone_idx, tp_indicies[[tp]]))
+      }
+      clone_summary_table_LNPB$total_count[i] <- sum(clone_summary_table_LNPB[i,time_points])
+    }
+  }
+  
+  ### pb-associated table
+  ### there are only 12 PB cells in this subset
+  pb_idx <- intersect(which(clone_summary_table_LNPB$cell_type == "PB"),
+                      which(clone_summary_table_LNPB$total_count > 0))
+  clone_summary_table_PB <- clone_summary_table_LNPB[c(rbind(pb_idx-1,
+                                                             pb_idx,
+                                                             pb_idx+1)),]
+  
+  ### only keep lineages from the pb-associated table
+  line_idx <- intersect(which(clone_summary_table_PB$total_count > 1),
+                        which(clone_summary_table_PB$cell_type == "ALL"))
+  lineage_table_PB <- clone_summary_table_PB[c(rbind(line_idx-2,
+                                                     line_idx-1,
+                                                     line_idx)),]
+  
+  ### save it in Excel file
+  write.xlsx2(lineage_table_PB, file = paste0(outputDir, "PB_Associated_Lineages.xlsx"),
+              sheetName = "PB_Lineages", row.names = FALSE)
+  
+  ###
+  ln_cellNum_subset <- sapply(time_points, function(x) {
+    return(length(intersect(which(cluster_17_clones_meta.data$Tissue == "LN"),
+                            which(cluster_17_clones_meta.data$Day == x))))
+  })
+  pb_cellNum_subset <- sapply(time_points, function(x) {
+    return(length(intersect(which(cluster_17_clones_meta.data$Tissue == "PB"),
+                            which(cluster_17_clones_meta.data$Day == x))))
+  })
+  ln_cellNum_all <- sapply(time_points, function(x) {
+    return(length(intersect(intersect(which(Seurat_Obj@meta.data$Tissue == "LN"),
+                                      which(Seurat_Obj@meta.data$Day == x)),
+                            which(!is.na(Seurat_Obj@meta.data$match.cdr)))))
+  })
+  pb_cellNum_all <- sapply(time_points, function(x) {
+    return(length(intersect(intersect(which(Seurat_Obj@meta.data$Tissue == "PB"),
+                                      which(Seurat_Obj@meta.data$Day == x)),
+                            which(!is.na(Seurat_Obj@meta.data$match.cdr)))))
+  })
+  
+  ### Alluvial plot - visualization of the lineage tracing (PB-associated lineages only)
+  
+  ### get an input data frame for the alluvial plot
+  lnpb_only_idx <- which(lineage_table_PB$cell_type != "ALL")
+  total_rows <- length(which(lineage_table_PB[lnpb_only_idx,time_points] > 0))
+  plot_df <- data.frame(Tissue=rep("", total_rows),
+                        Time=rep("", total_rows),
+                        Clone_Size=rep(0, total_rows),
+                        Clone=rep("", total_rows),
+                        CDR3=rep("", total_rows))
+  cnt <- 1
+  for(i in lnpb_only_idx) {
+    for(tp in time_points) {
+      if(lineage_table_PB[i,tp] > 0) {
+        plot_df[cnt,] <- c(lineage_table_PB$cell_type[i],
+                           tp,
+                           lineage_table_PB[i,tp],
+                           lineage_table_PB$clone_id[i],
+                           lineage_table_PB$cdr_ab[i])
+        cnt <- cnt + 1
+      }
+    }
+  }
+  plot_df$Time <- factor(plot_df$Time, levels = time_points)
+  
+  ### numerize the clone_size column
+  plot_df$Clone_Size <- as.numeric(plot_df$Clone_Size)
+  
+  ### draw the alluvial plot
+  ggplot(plot_df,
+         aes(x = Time, stratum = Clone, alluvium = Clone,
+             y = Clone_Size,
+             fill = CDR3, label = CDR3)) +
+    ggtitle("Clonal Tracing of the TFH-related Cells (PB-Associated Lineages)") +
+    geom_stratum(alpha = 1) +
+    geom_flow() +
+    rotate_x_text(90) +
+    theme_pubr(legend = "right") +
+    theme(axis.title.x = element_blank()) +
+    theme_cleveland2() +
+    scale_fill_jco(name="CDR3 (TCRa:TCRb)") +
+    scale_y_continuous(expand = c(0, 0), limits = c(0, NA))
+  ggsave(file = paste0(outputDir, "TFH_Cluster_17_Clonal_Tracing.png"), width = 18, height = 9, dpi = 300)
+  
+  
   
   
   
