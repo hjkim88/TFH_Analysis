@@ -486,29 +486,31 @@ clonal_tracking <- function(Seurat_RObj_path="./data/Ali_Tcell_combined.RDATA",
                 sheetName = paste0(clone, "_vs_Cluster17"), row.names = FALSE)
     
     ### pathway analysis
-    pathway_result_GO <- pathwayAnalysis_CP(geneList = mapIds(org.Hs.eg.db,
-                                                              de_result[which(de_result$FDR < de_signif_thresh),
-                                                                        "Gene_Symbol"],
-                                                              "ENTREZID", "SYMBOL"),
-                                            org = "human", database = "GO",
-                                            title = paste0("Pathway_Results_", clone, "_vs_Cluster17"),
-                                            displayNum = 50, imgPrint = TRUE,
-                                            dir = paste0(outputDir3))
-    pathway_result_KEGG <- pathwayAnalysis_CP(geneList = mapIds(org.Hs.eg.db,
+    if(length(which(de_result$FDR < de_signif_thresh)) > 0) {
+      pathway_result_GO <- pathwayAnalysis_CP(geneList = mapIds(org.Hs.eg.db,
                                                                 de_result[which(de_result$FDR < de_signif_thresh),
                                                                           "Gene_Symbol"],
                                                                 "ENTREZID", "SYMBOL"),
-                                              org = "human", database = "KEGG",
+                                              org = "human", database = "GO",
                                               title = paste0("Pathway_Results_", clone, "_vs_Cluster17"),
                                               displayNum = 50, imgPrint = TRUE,
                                               dir = paste0(outputDir3))
-    if(nrow(pathway_result_GO) > 0) {
-      write.xlsx2(pathway_result_GO, file = paste0(outputDir3, "GO_pathway_results_", clone, "_vs_Cluster17.xlsx"),
-                  row.names = FALSE, sheetName = paste0("GO_Results_", clone, "_vs_Cluster17"))
-    }
-    if(nrow(pathway_result_KEGG) > 0) {
-      write.xlsx2(pathway_result_KEGG, file = paste0(outputDir3, "KEGG_pathway_results_", clone, "_vs_Cluster17.xlsx"),
-                  row.names = FALSE, sheetName = paste0("KEGG_Results_", clone, "_vs_Cluster17"))
+      pathway_result_KEGG <- pathwayAnalysis_CP(geneList = mapIds(org.Hs.eg.db,
+                                                                  de_result[which(de_result$FDR < de_signif_thresh),
+                                                                            "Gene_Symbol"],
+                                                                  "ENTREZID", "SYMBOL"),
+                                                org = "human", database = "KEGG",
+                                                title = paste0("Pathway_Results_", clone, "_vs_Cluster17"),
+                                                displayNum = 50, imgPrint = TRUE,
+                                                dir = paste0(outputDir3))
+      if(!is.null(pathway_result_GO) && nrow(pathway_result_GO) > 0) {
+        write.xlsx2(pathway_result_GO, file = paste0(outputDir3, "GO_pathway_results_", clone, "_vs_Cluster17.xlsx"),
+                    row.names = FALSE, sheetName = paste0("GO_Results_", clone, "_vs_Cluster17"))
+      }
+      if(!is.null(pathway_result_KEGG) && nrow(pathway_result_KEGG) > 0) {
+        write.xlsx2(pathway_result_KEGG, file = paste0(outputDir3, "KEGG_pathway_results_", clone, "_vs_Cluster17.xlsx"),
+                    row.names = FALSE, sheetName = paste0("KEGG_Results_", clone, "_vs_Cluster17"))
+      }
     }
     
   }
