@@ -57,6 +57,12 @@ clonal_tracking <- function(Seurat_RObj_path="./data/Ali_Tcell_combined.RDATA",
     install.packages("ggsci")
     require(ggsci, quietly = TRUE)
   }
+  if(!require(org.Hs.eg.db, quietly = TRUE)) {
+    if (!requireNamespace("BiocManager", quietly = TRUE))
+      install.packages("BiocManager")
+    BiocManager::install("org.Hs.eg.db")
+    require(org.Hs.eg.db, quietly = TRUE)
+  }
   
   ### load the Seurat object and save the object name
   tmp_env <- new.env()
@@ -290,7 +296,221 @@ clonal_tracking <- function(Seurat_RObj_path="./data/Ali_Tcell_combined.RDATA",
   ggsave(file = paste0(outputDir, "TFH_Cluster_17_Clonal_Tracing.png"), width = 18, height = 9, dpi = 300)
   
   
+  #
+  ### Markers associated with the interesting clones in the TFH cluster
+  #
   
+  # ******************************************************************************************
+  # Pathway Analysis with clusterProfiler package
+  # Input: geneList     = a vector of gene Entrez IDs for pathway analysis [numeric or character]
+  #        org          = organism that will be used in the analysis ["human" or "mouse"]
+  #                       should be either "human" or "mouse"
+  #        database     = pathway analysis database (KEGG or GO) ["KEGG" or "GO"]
+  #        title        = title of the pathway figure [character]
+  #        pv_threshold = pathway analysis p-value threshold (not DE analysis threshold) [numeric]
+  #        displayNum   = the number of pathways that will be displayed [numeric]
+  #                       (If there are many significant pathways show the few top pathways)
+  #        imgPrint     = print a plot of pathway analysis [TRUE/FALSE]
+  #        dir          = file directory path of the output pathway figure [character]
+  #
+  # Output: Pathway analysis results in figure - using KEGG and GO pathways
+  #         The x-axis represents the number of DE genes in the pathway
+  #         The y-axis represents pathway names
+  #         The color of a bar indicates adjusted p-value from the pathway analysis
+  #         For Pathview Result, all colored genes are found DE genes in the pathway,
+  #         and the color indicates log2(fold change) of the DE gene from DE analysis
+  # ******************************************************************************************
+  pathwayAnalysis_CP <- function(geneList,
+                                 org,
+                                 database,
+                                 title="Pathway_Results",
+                                 pv_threshold=0.05,
+                                 displayNum=Inf,
+                                 imgPrint=TRUE,
+                                 dir="./") {
+    
+    ### load library
+    if(!require(clusterProfiler, quietly = TRUE)) {
+      if (!requireNamespace("BiocManager", quietly = TRUE))
+        install.packages("BiocManager")
+      BiocManager::install("clusterProfiler")
+      require(clusterProfiler, quietly = TRUE)
+    }
+    if(!require(ggplot2)) {
+      install.packages("ggplot2")
+      library(ggplot2)
+    }
+    
+    
+    ### collect gene list (Entrez IDs)
+    geneList <- geneList[which(!is.na(geneList))]
+    
+    if(!is.null(geneList)) {
+      ### make an empty list
+      p <- list()
+      
+      if(database == "KEGG") {
+        ### KEGG Pathway
+        kegg_enrich <- enrichKEGG(gene = geneList, organism = org, pvalueCutoff = pv_threshold)
+        
+        if(is.null(kegg_enrich)) {
+          writeLines("KEGG Result does not exist")
+          return(NULL)
+        } else {
+          kegg_enrich@result <- kegg_enrich@result[which(kegg_enrich@result$p.adjust < pv_threshold),]
+          
+          if(imgPrint == TRUE) {
+            if((displayNum == Inf) || (nrow(kegg_enrich@result) <= displayNum)) {
+              result <- kegg_enrich@result
+              description <- kegg_enrich@result$Description
+            } else {
+              result <- kegg_enrich@result[1:displayNum,]
+              description <- kegg_enrich@result$Description[1:displayNum]
+            }
+            
+            if(nrow(kegg_enrich) > 0) {
+              p[[1]] <- ggplot(result, aes(x=Description, y=Count)) + labs(x="", y="Gene Counts") + 
+                theme_classic(base_size = 16) + geom_bar(aes(fill = p.adjust), stat="identity") + coord_flip() +
+                scale_x_discrete(limits = rev(description)) +
+                guides(fill = guide_colorbar(ticks=FALSE, title="P.Val", barheight=10)) +
+                ggtitle(paste0("KEGG ", title))
+              
+              png(paste0(dir, "kegg_", title, "_CB.png"), width = 2000, height = 1000)
+              print(p[[1]])
+              dev.off()
+            } else {
+              writeLines("KEGG Result does not exist")
+            }
+          }
+          
+          return(kegg_enrich@result)
+        }
+      } else if(database == "GO") {
+        ### GO Pathway
+        if(org == "human") {
+          go_enrich <- enrichGO(gene = geneList, OrgDb = 'org.Hs.eg.db', readable = T, ont = "BP", pvalueCutoff = pv_threshold)
+        } else if(org == "mouse") {
+          go_enrich <- enrichGO(gene = geneList, OrgDb = 'org.Mm.eg.db', readable = T, ont = "BP", pvalueCutoff = pv_threshold)
+        } else {
+          go_enrich <- NULL
+          writeLines(paste("Unknown org variable:", org))
+        }
+        
+        if(is.null(go_enrich)) {
+          writeLines("GO Result does not exist")
+          return(NULL)
+        } else {
+          go_enrich@result <- go_enrich@result[which(go_enrich@result$p.adjust < pv_threshold),]
+          
+          if(imgPrint == TRUE) {
+            if((displayNum == Inf) || (nrow(go_enrich@result) <= displayNum)) {
+              result <- go_enrich@result
+              description <- go_enrich@result$Description
+            } else {
+              result <- go_enrich@result[1:displayNum,]
+              description <- go_enrich@result$Description[1:displayNum]
+            }
+            
+            if(nrow(go_enrich) > 0) {
+              p[[2]] <- ggplot(result, aes(x=Description, y=Count)) + labs(x="", y="Gene Counts") + 
+                theme_classic(base_size = 16) + geom_bar(aes(fill = p.adjust), stat="identity") + coord_flip() +
+                scale_x_discrete(limits = rev(description)) +
+                guides(fill = guide_colorbar(ticks=FALSE, title="P.Val", barheight=10)) +
+                ggtitle(paste0("GO ", title))
+              
+              png(paste0(dir, "go_", title, "_CB.png"), width = 2000, height = 1000)
+              print(p[[2]])
+              dev.off()
+            } else {
+              writeLines("GO Result does not exist")
+            }
+          }
+          
+          return(go_enrich@result)
+        }
+      } else {
+        stop("database prameter should be \"GO\" or \"KEGG\"")
+      }
+    } else {
+      writeLines("geneList = NULL")
+    }
+  }
   
+  ### set clone size threshold
+  ### clones with clone size > clone size threshold will be used
+  clone_size_thresh <- 5
+  
+  ### DE gene FDR threshold
+  de_signif_thresh <- 0.05
+  
+  ### get clone names that will be used
+  clone_names <- clone_summary_table$clone_id[which(clone_summary_table$total_count > clone_size_thresh)]
+  
+  ### set new output directory
+  outputDir2 <- paste0(outputDir, "Clone_Markers/")
+  dir.create(path = outputDir2, showWarnings = FALSE, recursive = TRUE)
+  
+  ### for each interesting clone perform marker discovery
+  for(clone in clone_names) {
+    
+    ### print progress
+    writeLines(paste(clone))
+    
+    ### set new output directory
+    outputDir3 <- paste0(outputDir2, clone, "/")
+    dir.create(path = outputDir3, showWarnings = FALSE, recursive = TRUE)
+    
+    ### Ident configure
+    new.ident <- rep(NA, nrow(Seurat_Obj@meta.data))
+    new.ident[which(Seurat_Obj@meta.data$clone_id == clone)] <- "ident1"
+    new.ident[setdiff(which(Seurat_Obj@meta.data$clone_id %in% cluster_17_clone_ids),
+                      which(Seurat_Obj@meta.data$clone_id == clone))] <- "ident2"
+    Idents(object = Seurat_Obj) <- new.ident
+    
+    ### DE analysis with DESeq2
+    de_result <- FindMarkers(Seurat_Obj,
+                             ident.1 = "ident1",
+                             ident.2 = "ident2",
+                             logfc.threshold = 0,
+                             min.pct = 0.1,
+                             test.use = "DESeq2")
+    
+    ### rearange the columns
+    de_result <- data.frame(Gene_Symbol=rownames(de_result),
+                            de_result[,-which(colnames(de_result) == "p_val_adj")],
+                            FDR=p.adjust(de_result$p_val, method = "BH"),
+                            stringsAsFactors = FALSE, check.names = FALSE)
+    
+    ### save in Excel
+    write.xlsx2(de_result, file = paste0(outputDir3, "DESeq2_", clone, "_vs_Cluster17.xlsx"),
+                sheetName = paste0(clone, "_vs_Cluster17"), row.names = FALSE)
+    
+    ### pathway analysis
+    pathway_result_GO <- pathwayAnalysis_CP(geneList = mapIds(org.Hs.eg.db,
+                                                              de_result[which(de_result$FDR < de_signif_thresh),
+                                                                        "Gene_Symbol"],
+                                                              "ENTREZID", "SYMBOL"),
+                                            org = "human", database = "GO",
+                                            title = paste0("Pathway_Results_", clone, "_vs_Cluster17"),
+                                            displayNum = 50, imgPrint = TRUE,
+                                            dir = paste0(outputDir3))
+    pathway_result_KEGG <- pathwayAnalysis_CP(geneList = mapIds(org.Hs.eg.db,
+                                                                de_result[which(de_result$FDR < de_signif_thresh),
+                                                                          "Gene_Symbol"],
+                                                                "ENTREZID", "SYMBOL"),
+                                              org = "human", database = "KEGG",
+                                              title = paste0("Pathway_Results_", clone, "_vs_Cluster17"),
+                                              displayNum = 50, imgPrint = TRUE,
+                                              dir = paste0(outputDir3))
+    if(nrow(pathway_result_GO) > 0) {
+      write.xlsx2(pathway_result_GO, file = paste0(outputDir3, "GO_pathway_results_", clone, "_vs_Cluster17.xlsx"),
+                  row.names = FALSE, sheetName = paste0("GO_Results_", clone, "_vs_Cluster17"))
+    }
+    if(nrow(pathway_result_KEGG) > 0) {
+      write.xlsx2(pathway_result_KEGG, file = paste0(outputDir3, "KEGG_pathway_results_", clone, "_vs_Cluster17.xlsx"),
+                  row.names = FALSE, sheetName = paste0("KEGG_Results_", clone, "_vs_Cluster17"))
+    }
+    
+  }
   
 }
