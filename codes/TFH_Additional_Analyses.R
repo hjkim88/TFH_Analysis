@@ -3,9 +3,8 @@
 #   Author    : Hyunjin Kim
 #   Date      : Jun 8, 2020
 #   Email     : hyunjin.kim@stjude.org
-#   Purpose   : Here are some additional things to do:
-#               1. PCA & UMAPs labeld with time points
-#               2. Can we distinguish any "recall" or "naive" TFH clones?
+#   Purpose   : Here is an additional thing to do:
+#               - PCA & UMAPs labeld with time points
 #
 #   Instruction
 #               1. Source("TFH_Additional_Analyses.R")
@@ -34,12 +33,9 @@ tfh_additional_analyses <- function(Seurat_RObj_path="./data/Ali_Tcell_combined.
     install.packages("ggplot2")
     require(ggplot2, quietly = TRUE)
   }
-  if(!require(ggConvexHull, quietly = TRUE)) {
-    if(!require(remotes, quietly = TRUE)) {
-      install.packages("remotes")
-    }
-    remotes::install_github("cmartin/ggConvexHull")
-    require(ggConvexHull, quietly = TRUE)
+  if(!require(gridExtra, quietly = TRUE)) {
+    install.packages("gridExtra")
+    require(gridExtra, quietly = TRUE)
   }
   
   ### load the Seurat object and save the object name
@@ -210,7 +206,59 @@ tfh_additional_analyses <- function(Seurat_RObj_path="./data/Ali_Tcell_combined.
   ### and I want to know what makes the separation
   #
   
+  ### test if it is explained by existing info
+  p <- list()
+  p[[1]] <- DimPlot(subset_Seurat_Obj, reduction = "umap", group.by = "Library", pt.size = 2) +
+    labs(title = "Library")
+  p[[2]] <- DimPlot(subset_Seurat_Obj, reduction = "umap", group.by = "Type", pt.size = 2) +
+    labs(title = "Type")
+  p[[3]] <- DimPlot(subset_Seurat_Obj, reduction = "umap", group.by = "Chip", pt.size = 2) +
+    labs(title = "Chip")
+  p[[4]] <- DimPlot(subset_Seurat_Obj, reduction = "umap", group.by = "LibNum", pt.size = 2) +
+    labs(title = "LibNum")
+  p[[5]] <- DimPlot(subset_Seurat_Obj, reduction = "umap", group.by = "Phase", pt.size = 2) +
+    labs(title = "Phase")
+  p[[6]] <- DimPlot(subset_Seurat_Obj, reduction = "umap", group.by = "seurat_clusters", pt.size = 2) +
+    labs(title = "seurat_clusters")
+  p[[7]] <- DimPlot(subset_Seurat_Obj, reduction = "umap", group.by = "ident", pt.size = 2) +
+    labs(title = "ident")
+  p[[8]] <- DimPlot(subset_Seurat_Obj, reduction = "umap", group.by = "clone_call", pt.size = 2) +
+    labs(title = "clone_call")
+  p[[9]] <- DimPlot(subset_Seurat_Obj, reduction = "umap", group.by = "Day", pt.size = 2) +
+    labs(title = "Day")
+  g <- arrangeGrob(grobs = p,
+                   nrow = 3,
+                   ncol = 3,
+                   top = "UMAP coloring with every possible column")
+  ggsave(file = paste0(outputDir, "UMAP_TFH_Cluster_17_Various.png"), g, width = 20, height = 12, dpi = 300)
   
+  ### see differentially expressed genes between two groups
+  group1 <- which(subset_Seurat_Obj@reductions$umap@cell.embeddings[,"UMAP_1"] < 0)
+  group2 <- which(subset_Seurat_Obj@reductions$umap@cell.embeddings[,"UMAP_1"] >= 0)
+  new.ident <- rep(NA, nrow(subset_Seurat_Obj@meta.data))
+  new.ident[group1] <- "ident1"
+  new.ident[group2] <- "ident2"
+  Idents(object = subset_Seurat_Obj) <- new.ident
+  de_result <- FindMarkers(subset_Seurat_Obj,
+                           ident.1 = "ident1",
+                           ident.2 = "ident2",
+                           logfc.threshold = 0,
+                           min.pct = 0.1,
+                           test.use = "DESeq2")
+  de_result <- data.frame(Gene_Symbol=rownames(de_result),
+                          de_result[,-which(colnames(de_result) == "p_val_adj")],
+                          FDR=p.adjust(de_result$p_val, method = "BH"),
+                          stringsAsFactors = FALSE, check.names = FALSE)
   
+  ### write out the DE result
+  write.xlsx2(de_result, file = paste0(outputDir, "DESeq2_Two_Interesting_Clusters.xlsx"),
+              sheetName = "DESeq2", row.names = FALSE)
+  
+  ### DE Gene Expressions in UMAP
+  FeaturePlot(object = subset_Seurat_Obj,
+              features = c("COTL1", "H3F3B", "TMSB10", "IL32", "RPS12", "TPT1", "HLA-A", "PPP1CC", "PTPRCAP"),
+              cols = c("grey", "red"), reduction = "umap", pt.size = 2) +
+    labs(plot.title = "DE Gene Expressions in UMAP")
+  ggsave(file = paste0(outputDir, "Two_Cluster_DE_Gene_Expressions_in_UMAP.png"), width = 20, height = 12, dpi = 300)
   
 }
