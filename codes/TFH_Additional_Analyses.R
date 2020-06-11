@@ -3,8 +3,12 @@
 #   Author    : Hyunjin Kim
 #   Date      : Jun 8, 2020
 #   Email     : hyunjin.kim@stjude.org
-#   Purpose   : Here is an additional thing to do:
-#               - PCA & UMAPs labeld with time points
+#   Purpose   : Here are additional things to do:
+#               1. PCA & UMAPs labeld with time points
+#               2. Evidence of naive and recall, and their differences?
+#                  * Naive as being size 1 and also located within the naive clusters.
+#                    Resting would be clone size >= 1 and outside the naive clusters.
+#                    Recalled would be size > 1 and located in a cluster with other highly activated cells.
 #
 #   Instruction
 #               1. Source("TFH_Additional_Analyses.R")
@@ -260,5 +264,37 @@ tfh_additional_analyses <- function(Seurat_RObj_path="./data/Ali_Tcell_combined.
               cols = c("grey", "red"), reduction = "umap", pt.size = 2) +
     labs(plot.title = "DE Gene Expressions in UMAP")
   ggsave(file = paste0(outputDir, "Two_Cluster_DE_Gene_Expressions_in_UMAP.png"), width = 20, height = 12, dpi = 300)
+  
+  
+  #
+  ### compare naive and recall
+  #
+  
+  ### Adding cell types to the meta.data
+  Seurat_Obj@meta.data$CD4_CD8 <- NA
+  Seurat_Obj@meta.data$CD4_CD8[which(Seurat_Obj@meta.data$seurat_clusters %in% c(0,1,3,4,5,8,9,10,13,14,15,17))] <- "CD4"
+  Seurat_Obj@meta.data$CD4_CD8[which(Seurat_Obj@meta.data$seurat_clusters %in% c(2,6,7,11,12,16,18))] <- "CD8"
+  DimPlot(Seurat_Obj, reduction = "umap", group.by = "CD4_CD8", pt.size = 1, label = TRUE)
+  Seurat_Obj@meta.data$Cell_Type <- NA
+  Seurat_Obj@meta.data$Cell_Type[which(Seurat_Obj@meta.data$seurat_clusters %in% c(0,1,2,3,9,10,11,14,16))] <- "Naive"
+  Seurat_Obj@meta.data$Cell_Type[which(Seurat_Obj@meta.data$seurat_clusters %in% c(4,5,7,12,13,15))] <- "Eff-Mem"
+  Seurat_Obj@meta.data$Cell_Type[which(Seurat_Obj@meta.data$seurat_clusters %in% c(6))] <- "MAIT-NKT"
+  Seurat_Obj@meta.data$Cell_Type[which(Seurat_Obj@meta.data$seurat_clusters %in% c(18))] <- "Hobits"
+  Seurat_Obj@meta.data$Cell_Type[which(Seurat_Obj@meta.data$seurat_clusters %in% c(8))] <- "Treg"
+  Seurat_Obj@meta.data$Cell_Type[which(Seurat_Obj@meta.data$seurat_clusters %in% c(17))] <- "TFH"
+  DimPlot(Seurat_Obj, reduction = "umap", group.by = "Cell_Type", pt.size = 1, label = TRUE)
+  
+  length(intersect(which(Seurat_Obj@meta.data$Cell_Type == "Naive"),
+                   which(Seurat_Obj@meta.data$Day == "d0")))
+  
+  ### Are there clones that have the naive phenotype at d0 and expanded at later?
+  ### 1. True naive at d0 vs expanded clones
+  ### 2. True naive at d0 that will be expanded vs will not be expanded
+  
+  
+  ### "Recall" vs "Resting"
+  ### Expanded at Eff-Mem vs the other Eff-Mem 
+  
+  
   
 }
