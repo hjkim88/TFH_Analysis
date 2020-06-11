@@ -522,7 +522,8 @@ clonal_tracking <- function(Seurat_RObj_path="./data/Ali_Tcell_combined.RDATA",
   
   ### make a clone summary table
   ### here I checked same match.cdr always has the same clone_id
-  unique_clone_idx <- which(!duplicated(Seurat_Obj@meta.data$clone_id))
+  unique_clone_idx <- intersect(which(!duplicated(Seurat_Obj@meta.data$clone_id)),
+                                which(!is.na(Seurat_Obj@meta.data$clone_id)))
   clone_summary_table <- data.frame(clone_id=Seurat_Obj@meta.data$clone_id[unique_clone_idx],
                                     cdr_ab=Seurat_Obj@meta.data$match.cdr[unique_clone_idx])
   rownames(clone_summary_table) <- clone_summary_table$clone_id
