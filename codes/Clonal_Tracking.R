@@ -29,6 +29,7 @@ clonal_tracking <- function(Seurat_RObj_path="./data/Ali_Tcell_combined.RDATA",
     install.packages("Seurat")
     require(Seurat, quietly = TRUE)
   }
+  options(java.parameters = "-Xmx10240m")
   if(!require(xlsx, quietly = TRUE)) {
     install.packages("xlsx")
     require(xlsx, quietly = TRUE)
@@ -571,6 +572,130 @@ clonal_tracking <- function(Seurat_RObj_path="./data/Ali_Tcell_combined.RDATA",
               sheetName = "ALL_CLONES_SUMMARY", row.names = FALSE)
   
   
+  ### Alluvial plot with the top 30 clones
   
+  ### select the top 30 clones
+  lineage_table <- clone_summary_table[1:30,]
+  
+  ### get an input data frame for the alluvial plot
+  time_points <- c("d0", "d5", "d12", "d28", "d60", "d90", "d120", "d180")
+  total_rows <- length(which(lineage_table[,time_points] > 0))
+  plot_df <- data.frame(Time=rep("", total_rows),
+                        Clone_Size=rep(0, total_rows),
+                        Clone=rep("", total_rows),
+                        CDR3=rep("", total_rows))
+  cnt <- 1
+  for(i in 1:nrow(lineage_table)) {
+    for(tp in time_points) {
+      if(lineage_table[i,tp] > 0) {
+        plot_df[cnt,] <- c(tp,
+                           lineage_table[i,tp],
+                           lineage_table$clone_id[i],
+                           lineage_table$cdr_ab[i])
+        cnt <- cnt + 1
+      }
+    }
+  }
+  plot_df$Time <- factor(plot_df$Time, levels = time_points)
+  
+  ### numerize the clone_size column
+  plot_df$Clone_Size <- as.numeric(plot_df$Clone_Size)
+  
+  ### theme that draws dotted lines for each y-axis ticks
+  ### this function is from "immunarch" package
+  theme_cleveland2 <- function(rotate = TRUE) {
+    if (rotate) {
+      theme(
+        panel.grid.major.x = element_blank(), panel.grid.minor.x = element_blank(),
+        panel.grid.major.y = element_line(
+          colour = "grey70",
+          linetype = "dashed"
+        )
+      )
+    }
+    else {
+      theme(
+        panel.grid.major.x = element_line(
+          colour = "grey70",
+          linetype = "dashed"
+        ), panel.grid.major.y = element_blank(),
+        panel.grid.minor.y = element_blank()
+      )
+    }
+  }
+  
+  ### draw the alluvial plot
+  ggplot(plot_df,
+         aes(x = Time, stratum = Clone, alluvium = Clone,
+             y = Clone_Size,
+             fill = Clone, label = CDR3)) +
+    ggtitle("Clonal Tracing of the Top 30 Clones from All the Cells") +
+    geom_flow() +
+    geom_stratum(alpha = 1) +
+    # geom_text(stat = "stratum", size = 0.8) +
+    rotate_x_text(90) +
+    theme_pubr(legend = "right") +
+    theme(axis.title.x = element_blank()) +
+    theme_cleveland2() +
+    scale_fill_viridis(discrete = T) +
+    scale_y_continuous(expand = c(0, 0), limits = c(0, NA))
+  ggsave(file = paste0(outputDir, "Top_30_All_Cell_Clonal_Tracing.png"), width = 20, height = 10, dpi = 300)
+  
+  
+  #
+  ### UMAP with the top 9 clones
+  #
+  
+  ### subset preparation for the PCA & UMAP
+  Idents(object = Seurat_Obj) <- Seurat_Obj@meta.data$clone_id
+  subset_Seurat_Obj <- subset(Seurat_Obj, idents=lineage_table$clone_id[1:9])
+  subset_Seurat_Obj@meta.data$Day <- factor(subset_Seurat_Obj@meta.data$Day,
+                                            levels = c("d0", "d5", "d12", "d28", "d60", "d90", "d120", "d180"))
+
+  ### draw the PCA & UMAP
+  DimPlot(subset_Seurat_Obj, reduction = "pca", split.by = "clone_id", group.by = "Day",
+          ncol = 3, pt.size = 2) +
+    labs(title = "PCA of the Top 9 Clones")
+  ggsave(file = paste0(outputDir, "PCA_Top_9_Clones_All_Cell.png"), width = 20, height = 10, dpi = 300)
+  DimPlot(subset_Seurat_Obj, reduction = "umap", split.by = "clone_id", group.by = "Day",
+          ncol = 3, pt.size = 2) +
+    labs(title = "UMAP of the Top 9 Clones")
+  ggsave(file = paste0(outputDir, "UMAP_Top_9_Clones_All_Cell.png"), width = 20, height = 10, dpi = 300)
+  
+  
+  
+  # ### Adding cell types to the meta.data
+  # Seurat_Obj@meta.data$CD4_CD8 <- NA
+  # Seurat_Obj@meta.data$CD4_CD8[which(Seurat_Obj@meta.data$seurat_clusters %in% c(0,1,3,4,5,8,9,10,13,14,15,17))] <- "CD4"
+  # Seurat_Obj@meta.data$CD4_CD8[which(Seurat_Obj@meta.data$seurat_clusters %in% c(2,6,7,11,12,16,18))] <- "CD8"
+  # Seurat_Obj@meta.data$Cell_Type <- NA
+  # Seurat_Obj@meta.data$Cell_Type[which(Seurat_Obj@meta.data$seurat_clusters %in% c(0,1,2,3,9,10,11,14,16))] <- "Naive"
+  # Seurat_Obj@meta.data$Cell_Type[which(Seurat_Obj@meta.data$seurat_clusters %in% c(4,5,7,12,13,15))] <- "Eff-Mem"
+  # Seurat_Obj@meta.data$Cell_Type[which(Seurat_Obj@meta.data$seurat_clusters %in% c(6))] <- "MAIT-NKT"
+  # Seurat_Obj@meta.data$Cell_Type[which(Seurat_Obj@meta.data$seurat_clusters %in% c(18))] <- "Hobits"
+  # Seurat_Obj@meta.data$Cell_Type[which(Seurat_Obj@meta.data$seurat_clusters %in% c(8))] <- "Treg"
+  # Seurat_Obj@meta.data$Cell_Type[which(Seurat_Obj@meta.data$seurat_clusters %in% c(17))] <- "TFH"
+  # 
+  # ### draw the UMAP
+  # p <- vector("list", length = 9)
+  # names(p) <- lineage_table$clone_id[1:length(p)]
+  # for(i in 1:length(p)) {
+  #   clones <- Seurat_Obj@meta.data$clone_id
+  #   clones[which(Seurat_Obj@meta.data$clone_id != lineage_table$clone_id[i])] <- NA
+  #   days <- Seurat_Obj@meta.data$Day
+  #   days[which(!Seurat_Obj@meta.data$clone_id != lineage_table$clone_id[i])] <- NA
+  #   plot_df <- data.frame(X=Seurat_Obj@reductions$umap@cell.embeddings[,"UMAP_1"],
+  #                         Y=Seurat_Obj@reductions$umap@cell.embeddings[,"UMAP_2"],
+  #                         Clone=clones,
+  #                         Day=days,
+  #                         Cell_Type=Seurat_Obj@meta.data$Cell_Type,
+  #                         stringsAsFactors = FALSE, check.names = FALSE)
+  #   p[[i]] <- ggplot(plot_df, aes_string(x="X", y="Y")) +
+  #     geom_point(aes_string(col="Day", shape="Cell_Type"), size=2, alpha=0.8) +
+  #     xlab("UMAP_1") + ylab("UMAP_2") +
+  #     ggtitle(paste0(lineage_table$clone_id[i])) +
+  #     theme_classic(base_size = 16) +
+  #     theme(legend.position = "right", plot.title = element_text(hjust = 0.5))
+  # }
   
 }
