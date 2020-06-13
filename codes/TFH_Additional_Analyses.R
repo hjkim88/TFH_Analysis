@@ -9,7 +9,8 @@
 #                  * Naive as being size 1 and also located within the naive clusters.
 #                    Resting would be clone size >= 1 and outside the naive clusters.
 #                    Recalled would be size > 1 and located in a cluster with other highly activated cells.
-#
+#               3. Classifier to classify "recall" and "resting"
+#   
 #   Instruction
 #               1. Source("TFH_Additional_Analyses.R")
 #               2. Run the function "tfh_additional_analyses" - specify the input file path and the output directory
@@ -40,6 +41,20 @@ tfh_additional_analyses <- function(Seurat_RObj_path="./data/Ali_Tcell_combined.
   if(!require(gridExtra, quietly = TRUE)) {
     install.packages("gridExtra")
     require(gridExtra, quietly = TRUE)
+  }
+  if(!require(org.Hs.eg.db, quietly = TRUE)) {
+    if (!requireNamespace("BiocManager", quietly = TRUE))
+      install.packages("BiocManager")
+    BiocManager::install("org.Hs.eg.db")
+    require(org.Hs.eg.db, quietly = TRUE)
+  }
+  if(!require(caret, quietly = TRUE)) {
+    install.packages("caret")
+    require(caret, quietly = TRUE)
+  }
+  if(!require(pROC, quietly = TRUE)) {
+    install.packages("pROC")
+    require(pROC, quietly = TRUE)
   }
   
   ### load the Seurat object and save the object name
@@ -270,7 +285,7 @@ tfh_additional_analyses <- function(Seurat_RObj_path="./data/Ali_Tcell_combined.
   ### compare naive and recall
   #
   
-  ### Adding cell types to the meta.data
+  ### Adding more informative columns to the meta.data
   Seurat_Obj@meta.data$CD4_CD8 <- NA
   Seurat_Obj@meta.data$CD4_CD8[which(Seurat_Obj@meta.data$seurat_clusters %in% c(0,1,3,4,5,8,9,10,13,14,15,17))] <- "CD4"
   Seurat_Obj@meta.data$CD4_CD8[which(Seurat_Obj@meta.data$seurat_clusters %in% c(2,6,7,11,12,16,18))] <- "CD8"
@@ -283,18 +298,370 @@ tfh_additional_analyses <- function(Seurat_RObj_path="./data/Ali_Tcell_combined.
   Seurat_Obj@meta.data$Cell_Type[which(Seurat_Obj@meta.data$seurat_clusters %in% c(8))] <- "Treg"
   Seurat_Obj@meta.data$Cell_Type[which(Seurat_Obj@meta.data$seurat_clusters %in% c(17))] <- "TFH"
   DimPlot(Seurat_Obj, reduction = "umap", group.by = "Cell_Type", pt.size = 1, label = TRUE)
-  
-  length(intersect(which(Seurat_Obj@meta.data$Cell_Type == "Naive"),
-                   which(Seurat_Obj@meta.data$Day == "d0")))
+  Seurat_Obj@meta.data$Clone_Size_At_The_Time <- NA
+  for(i in 1:nrow(Seurat_Obj@meta.data)) {
+    Seurat_Obj@meta.data$Clone_Size_At_The_Time[i] <- length(intersect(which(Seurat_Obj@meta.data$clone_id == Seurat_Obj@meta.data$clone_id[i]),
+                                                                       which(Seurat_Obj@meta.data$Day == Seurat_Obj@meta.data$Day[i])))
+  }
   
   ### Are there clones that have the naive phenotype at d0 and expanded at later?
   ### 1. True naive at d0 vs expanded clones
   ### 2. True naive at d0 that will be expanded vs will not be expanded
   
+  ### new output directory for the results
+  outputDir2 <- paste0(outputDir, "Naive_at_d0_also_appear_later/")
+  dir.create(outputDir2, showWarnings = FALSE, recursive = TRUE)
+  
+  ### get indicies of the true naive
+  true_naive_idx <- intersect(intersect(which(Seurat_Obj@meta.data$Cell_Type == "Naive"),
+                                        which(Seurat_Obj@meta.data$Day == "d0")),
+                              which(Seurat_Obj@meta.data$Clone_Size_At_The_Time == 1))
+  
+  ### unique clones of the true naive
+  true_naive_unique_clones <- unique(Seurat_Obj@meta.data$clone_id[true_naive_idx])
+  
+  ### load the clone summary table
+  clone_summary_table <- read.xlsx2(file = paste0(outputDir, "All_Clones_Count_Summary.xlsx"), sheetIndex = 1,
+                                    stringsAsFactors=FALSE, check.names=FALSE)
+  clone_summary_table[3:11] <- sapply(clone_summary_table[3:11], as.numeric)
+  rownames(clone_summary_table) <- clone_summary_table$clone_id
+  
+  ### clone summary table subset with the unique clones of the true naive
+  true_naive_at_d0_clone_summary_table <- clone_summary_table[true_naive_unique_clones,]
+  
+  ### clones that also appear in the later time points
+  result_table <- true_naive_at_d0_clone_summary_table[which(true_naive_at_d0_clone_summary_table$total_count > 1),]
+  
+  ### save the result
+  ### * there are only 2 samples in Group1, so it's impossible to run DE analysis
+  write.xlsx2(result_table, file = paste0(outputDir2, "Clones_Naive_at_d0_and_appear_later.xlsx"),
+              sheetName = "Naive at d0 and also appear later", row.names = FALSE)
+  for(clone in result_table$clone_id) {
+    write.xlsx2(Seurat_Obj@meta.data[which(Seurat_Obj@meta.data$clone_id == clone),],
+                file = paste0(outputDir2, "Clones_Naive_at_d0_and_appear_later.xlsx"),
+                sheetName = clone, row.names = FALSE, append = TRUE)
+  }
+  
+  ### UMAPs with Clusters and with Cells Type
+  p <- list()
+  p[[1]] <- DimPlot(Seurat_Obj, reduction = "umap", group.by = "seurat_clusters", pt.size = 1, label = TRUE) +
+              labs(title = "UMAP with Clusters")
+  p[[2]] <- DimPlot(Seurat_Obj, reduction = "umap", group.by = "Cell_Type", pt.size = 1, label = TRUE) +
+              labs(title = "UMAP with Cell Types")
+  ggsave(file = paste0(outputDir2, "UMAP_Clones_Naive_at_d0_and_appear_later.png"),
+         arrangeGrob(p[[1]], p[[2]], nrow = 2, ncol = 1),
+         width = 16, height = 12, dpi = 300)
   
   ### "Recall" vs "Resting"
   ### Expanded at Eff-Mem vs the other Eff-Mem 
   
+  ### new output directory for the results
+  outputDir2 <- paste0(outputDir, "Recall_vs_Resting/")
+  dir.create(outputDir2, showWarnings = FALSE, recursive = TRUE)
   
+  ### expansion threshold
+  ### if clone size > expansion threshold, the clone is regarded as "clonaly expanded"
+  expansion_threshold <- 5
+  
+  ### UMAP of "recall" vs "resting" in each time point
+  Seurat_Obj@meta.data$Recall_Resting <- NA
+  Seurat_Obj@meta.data$Recall_Resting[intersect(which(Seurat_Obj@meta.data$Cell_Type != "Naive"),
+                                                which(Seurat_Obj@meta.data$Clone_Size_At_The_Time > expansion_threshold))] <- "Recall"
+  Seurat_Obj@meta.data$Recall_Resting[intersect(which(Seurat_Obj@meta.data$Cell_Type != "Naive"),
+                                                which(Seurat_Obj@meta.data$Clone_Size_At_The_Time <= expansion_threshold))] <- "Resting"
+  p <- list()
+  p[[1]] <- DimPlot(Seurat_Obj, reduction = "umap", group.by = "Recall_Resting", pt.size = 2, label = TRUE) +
+              labs(title = paste0("UMAP (Recall - Clone Size > ", expansion_threshold, " or Resting)"))
+  p[[2]] <- DimPlot(Seurat_Obj, reduction = "umap", group.by = "Cell_Type", pt.size = 2, label = TRUE) +
+              labs(title = "UMAP with Cell Types")
+  alpha_v <- rep(0.7, nrow(Seurat_Obj@meta.data))
+  alpha_v[intersect(which(Seurat_Obj@meta.data$Cell_Type != "Naive"),
+                 which(Seurat_Obj@meta.data$Clone_Size_At_The_Time > expansion_threshold))] <- 1
+  p[[1]]$layers[[1]]$aes_params$alpha <- alpha_v
+  size_v <- rep(1, nrow(Seurat_Obj@meta.data))
+  size_v[intersect(which(Seurat_Obj@meta.data$Cell_Type != "Naive"),
+                   which(Seurat_Obj@meta.data$Clone_Size_At_The_Time > expansion_threshold))] <- 3
+  p[[1]]$layers[[1]]$aes_params$size <- size_v
+  ggsave(file = paste0(outputDir2, "UMAP_Recall_vs_Resting.png"),
+         arrangeGrob(p[[1]], p[[2]], nrow = 2, ncol = 1),
+         width = 16, height = 12, dpi = 300)
+  
+  
+  ### DE analysis of the "recall" and the "resting"
+  
+  ### get indicies of the "recall" and the "resting"
+  recall_idx <- intersect(which(Seurat_Obj@meta.data$Clone_Size_At_The_Time > expansion_threshold),
+                          which(Seurat_Obj@meta.data$Cell_Type != "Naive"))
+  resting_idx <- intersect(which(Seurat_Obj@meta.data$Clone_Size_At_The_Time <= expansion_threshold),
+                           which(Seurat_Obj@meta.data$Cell_Type != "Naive"))
+  
+  ### Ident configure
+  new.ident <- rep(NA, nrow(Seurat_Obj@meta.data))
+  new.ident[recall_idx] <- "ident1"
+  new.ident[resting_idx] <- "ident2"
+  Idents(object = Seurat_Obj) <- new.ident
+  
+  ### DE analysis
+  de_result <- FindMarkers(Seurat_Obj,
+                           ident.1 = "ident1",
+                           ident.2 = "ident2",
+                           logfc.threshold = 0,
+                           min.pct = 0.1,
+                           test.use = "DESeq2")
+  
+  ### rearange the columns
+  de_result <- data.frame(Gene_Symbol=rownames(de_result),
+                          de_result[,-which(colnames(de_result) == "p_val_adj")],
+                          FDR=p.adjust(de_result$p_val, method = "BH"),
+                          stringsAsFactors = FALSE, check.names = FALSE)
+  
+  ### save in Excel
+  write.xlsx2(de_result, file = paste0(outputDir2, "Recall_vs_Resting_DE_Genes_DESeq2.xlsx"),
+              sheetName = "DESeq2", row.names = FALSE)
+  
+  # ******************************************************************************************
+  # Pathway Analysis with clusterProfiler package
+  # Input: geneList     = a vector of gene Entrez IDs for pathway analysis [numeric or character]
+  #        org          = organism that will be used in the analysis ["human" or "mouse"]
+  #                       should be either "human" or "mouse"
+  #        database     = pathway analysis database (KEGG or GO) ["KEGG" or "GO"]
+  #        title        = title of the pathway figure [character]
+  #        pv_threshold = pathway analysis p-value threshold (not DE analysis threshold) [numeric]
+  #        displayNum   = the number of pathways that will be displayed [numeric]
+  #                       (If there are many significant pathways show the few top pathways)
+  #        imgPrint     = print a plot of pathway analysis [TRUE/FALSE]
+  #        dir          = file directory path of the output pathway figure [character]
+  #
+  # Output: Pathway analysis results in figure - using KEGG and GO pathways
+  #         The x-axis represents the number of DE genes in the pathway
+  #         The y-axis represents pathway names
+  #         The color of a bar indicates adjusted p-value from the pathway analysis
+  #         For Pathview Result, all colored genes are found DE genes in the pathway,
+  #         and the color indicates log2(fold change) of the DE gene from DE analysis
+  # ******************************************************************************************
+  pathwayAnalysis_CP <- function(geneList,
+                                 org,
+                                 database,
+                                 title="Pathway_Results",
+                                 pv_threshold=0.05,
+                                 displayNum=Inf,
+                                 imgPrint=TRUE,
+                                 dir="./") {
+    
+    ### load library
+    if(!require(clusterProfiler, quietly = TRUE)) {
+      if (!requireNamespace("BiocManager", quietly = TRUE))
+        install.packages("BiocManager")
+      BiocManager::install("clusterProfiler")
+      require(clusterProfiler, quietly = TRUE)
+    }
+    if(!require(ggplot2)) {
+      install.packages("ggplot2")
+      library(ggplot2)
+    }
+    
+    
+    ### collect gene list (Entrez IDs)
+    geneList <- geneList[which(!is.na(geneList))]
+    
+    if(!is.null(geneList)) {
+      ### make an empty list
+      p <- list()
+      
+      if(database == "KEGG") {
+        ### KEGG Pathway
+        kegg_enrich <- enrichKEGG(gene = geneList, organism = org, pvalueCutoff = pv_threshold)
+        
+        if(is.null(kegg_enrich)) {
+          writeLines("KEGG Result does not exist")
+          return(NULL)
+        } else {
+          kegg_enrich@result <- kegg_enrich@result[which(kegg_enrich@result$p.adjust < pv_threshold),]
+          
+          if(imgPrint == TRUE) {
+            if((displayNum == Inf) || (nrow(kegg_enrich@result) <= displayNum)) {
+              result <- kegg_enrich@result
+              description <- kegg_enrich@result$Description
+            } else {
+              result <- kegg_enrich@result[1:displayNum,]
+              description <- kegg_enrich@result$Description[1:displayNum]
+            }
+            
+            if(nrow(kegg_enrich) > 0) {
+              p[[1]] <- ggplot(result, aes(x=Description, y=Count)) + labs(x="", y="Gene Counts") + 
+                theme_classic(base_size = 16) + geom_bar(aes(fill = p.adjust), stat="identity") + coord_flip() +
+                scale_x_discrete(limits = rev(description)) +
+                guides(fill = guide_colorbar(ticks=FALSE, title="P.Val", barheight=10)) +
+                ggtitle(paste0("KEGG ", title))
+              
+              png(paste0(dir, "kegg_", title, "_CB.png"), width = 2000, height = 1000)
+              print(p[[1]])
+              dev.off()
+            } else {
+              writeLines("KEGG Result does not exist")
+            }
+          }
+          
+          return(kegg_enrich@result)
+        }
+      } else if(database == "GO") {
+        ### GO Pathway
+        if(org == "human") {
+          go_enrich <- enrichGO(gene = geneList, OrgDb = 'org.Hs.eg.db', readable = T, ont = "BP", pvalueCutoff = pv_threshold)
+        } else if(org == "mouse") {
+          go_enrich <- enrichGO(gene = geneList, OrgDb = 'org.Mm.eg.db', readable = T, ont = "BP", pvalueCutoff = pv_threshold)
+        } else {
+          go_enrich <- NULL
+          writeLines(paste("Unknown org variable:", org))
+        }
+        
+        if(is.null(go_enrich)) {
+          writeLines("GO Result does not exist")
+          return(NULL)
+        } else {
+          go_enrich@result <- go_enrich@result[which(go_enrich@result$p.adjust < pv_threshold),]
+          
+          if(imgPrint == TRUE) {
+            if((displayNum == Inf) || (nrow(go_enrich@result) <= displayNum)) {
+              result <- go_enrich@result
+              description <- go_enrich@result$Description
+            } else {
+              result <- go_enrich@result[1:displayNum,]
+              description <- go_enrich@result$Description[1:displayNum]
+            }
+            
+            if(nrow(go_enrich) > 0) {
+              p[[2]] <- ggplot(result, aes(x=Description, y=Count)) + labs(x="", y="Gene Counts") + 
+                theme_classic(base_size = 16) + geom_bar(aes(fill = p.adjust), stat="identity") + coord_flip() +
+                scale_x_discrete(limits = rev(description)) +
+                guides(fill = guide_colorbar(ticks=FALSE, title="P.Val", barheight=10)) +
+                ggtitle(paste0("GO ", title))
+              
+              png(paste0(dir, "go_", title, "_CB.png"), width = 2000, height = 1000)
+              print(p[[2]])
+              dev.off()
+            } else {
+              writeLines("GO Result does not exist")
+            }
+          }
+          
+          return(go_enrich@result)
+        }
+      } else {
+        stop("database prameter should be \"GO\" or \"KEGG\"")
+      }
+    } else {
+      writeLines("geneList = NULL")
+    }
+  }
+  
+  ### pathway analysis
+  target_genes <- de_result$Gene_Symbol[which(de_result$FDR < 0.0001)]
+  pathway_result_GO <- pathwayAnalysis_CP(geneList = mapIds(org.Hs.eg.db, target_genes, "ENTREZID", "SYMBOL"),
+                                          org = "human", database = "GO",
+                                          title = paste0("Pathway_Results_Recall_vs_Resting_DESeq2"),
+                                          displayNum = 50, imgPrint = TRUE,
+                                          dir = paste0(outputDir2))
+  write.xlsx2(pathway_result_GO, file = paste0(outputDir2, "GO_pathway_results_recall_vs_resting_DESeq2.xlsx"),
+              row.names = FALSE, sheetName = "GO")
+  pathway_result_KEGG <- pathwayAnalysis_CP(geneList = mapIds(org.Hs.eg.db, target_genes, "ENTREZID", "SYMBOL"),
+                                            org = "human", database = "KEGG",
+                                            title = paste0("Pathway_Results_Recall_vs_Resting_DESeq2"),
+                                            displayNum = 50, imgPrint = TRUE,
+                                            dir = paste0(outputDir2))
+  write.xlsx2(pathway_result_KEGG, file = paste0(outputDir2, "KEGG_pathway_results_recall_vs_resting_DESeq2.xlsx"),
+              row.names = FALSE, sheetName = "KEGG")
+  
+  
+  #
+  ### Classifier to classify "recall" and "resting"
+  #
+  
+  ### set parameters
+  set.seed(1234)
+  featureSelectionNum <- 1000
+  methodTypes <- c("svmLinear", "svmRadial", "gbm", "rf", "LogitBoost", "knn")
+  methodNames <- c("SVMLinear", "SVMRadial", "GBM", "RandomForest", "LogitBoost", "K-NN")
+  train_control <- trainControl(method="LOOCV", classProbs = TRUE, savePredictions = TRUE, verboseIter = FALSE)
+  
+  #'******************************************************************************
+  #' A function to transform RNA-Seq data with VST in DESeq2 package
+  #' readCount: RNA-Seq rawcounts in a matrix or in a data frame form
+  #'            Rows are genes and columns are samples
+  #' filter_thresh: The function filters out genes that have at least one sample
+  #'                with counts larger than the 'filter_thresh' value
+  #'                e.g., if the 'filter_thresh' = 1, then it removes genes
+  #'                that have counts <= 1 across all the samples
+  #'                if 0, then there will be no filtering
+  #'******************************************************************************
+  normalizeRNASEQwithVST <- function(readCount, filter_thresh=1) {
+    
+    ### load library
+    if(!require(DESeq2, quietly = TRUE)) {
+      if(!requireNamespace("BiocManager", quietly = TRUE))
+        install.packages("BiocManager")
+      BiocManager::install("DESeq2")
+      require(DESeq2, quietly = TRUE)
+    }
+    
+    ### make a design matrix for DESeq2 data
+    condition <- data.frame(factor(rep("OneClass", ncol(readCount))))
+    
+    ### Data preparation for DESeq2 format
+    deSeqData <- DESeqDataSetFromMatrix(countData=readCount, colData=condition, design= ~0)
+    
+    if(filter_thresh > 0) {
+      ### Remove rubbish rows - this will decrease the number of rows
+      keep = apply(counts(deSeqData), 1, function(r){
+        return(sum(r > filter_thresh) > 0)
+      })
+      deSeqData <- deSeqData[keep,]
+    }
+    
+    ### VST
+    vsd <- varianceStabilizingTransformation(deSeqData)
+    transCnt <- data.frame(assay(vsd), check.names = FALSE)
+    
+    return (transCnt)
+    
+  }
+  
+  ### a function to select genes based on variance
+  selectTopV <- function(x, selectNum) {
+    v <- apply(x, 1, var)
+    x <- x[order(-v),]
+    x <- x[1:selectNum,]
+    
+    return (x)
+  }
+  
+  ### normalize the read counts
+  ### before the normalization, only keep the recall and random resting samples
+  input_data <- normalizeRNASEQwithVST(readCount = data.frame(Seurat_Obj@assays$RNA@counts[,c(recall_idx,
+                                                                                              sample(x = resting_idx, size = length(recall_idx)))],
+                                                              stringsAsFactors = FALSE, check.names = FALSE))
+  
+  ### reduce the gene size based on variance
+  ### only selects high variance genes
+  input_data <- selectTopV(input_data, featureSelectionNum)
+  
+  ### annotate class for the input data
+  input_data <- data.frame(t(input_data), stringsAsFactors = FALSE, check.names = FALSE)
+  input_data$Type <- factor(c(rep("Recall", length(recall_idx)),
+                              rep("Resting", length(recall_idx))), levels = c("Recall", "Resting"))
+  
+  p <- list()
+  for(i in 1:length(methodTypes)) {
+    model <- train(Type~., data=input_data, trControl=train_control, method=methodTypes[i])
+    roc <- roc(model$pred$obs, model$pred$Type)
+    p[[i]] <- plot.roc(roc, main = paste(methodNames[i], "Using Gene Expressions"), legacy.axes = TRUE, print.auc = TRUE, auc.polygon = TRUE, xlim = c(1,0), ylim = c(0,1), grid = TRUE)
+  }
+  
+  pdf(paste0(outputDir2, "Classifier_Recall_vs_Resting_AUCs_", featureSelectionNum, ".pdf"))
+  par(mfrow=c(3, 2))
+  for(i in 1:length(methodTypes)) {
+    plot(p[[i]])
+  }
+  dev.off()
   
 }
