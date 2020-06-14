@@ -8,7 +8,7 @@
 #               Can we detect known Tfh clones from the LN in the blood, does this have some sort of pattern
 #               with maybe a 1 cell in the blood early on turns into many in the LN, or the other way,
 #               where we have expanded clones in the LN become detectable in blood later, and is there an alteration
-#               in these cases? 
+#               in these cases?
 #
 #   Instruction
 #               1. Source("Clonal_Tracking.R")
@@ -232,7 +232,7 @@ clonal_tracking <- function(Seurat_RObj_path="./data/Ali_Tcell_combined.RDATA",
   write.xlsx2(lineage_table_PB, file = paste0(outputDir, "PB_Associated_Lineages.xlsx"),
               sheetName = "PB_Lineages", row.names = FALSE)
   
-  ###
+  ### get the number of cells for each group
   ln_cellNum_subset <- sapply(time_points, function(x) {
     return(length(intersect(which(cluster_17_clones_meta.data$Tissue == "LN"),
                             which(cluster_17_clones_meta.data$Day == x))))
@@ -295,6 +295,27 @@ clonal_tracking <- function(Seurat_RObj_path="./data/Ali_Tcell_combined.RDATA",
     scale_fill_jco(name="CDR3 (TCRa:TCRb)") +
     scale_y_continuous(expand = c(0, 0), limits = c(0, NA))
   ggsave(file = paste0(outputDir, "TFH_Cluster_17_Clonal_Tracing.png"), width = 18, height = 9, dpi = 300)
+  
+  
+  #
+  ### PCA & UMAP with the top 9 clones from the TFH result
+  #
+  
+  ### subset preparation for the PCA & UMAP
+  Idents(object = Seurat_Obj) <- Seurat_Obj@meta.data$clone_id
+  subset_Seurat_Obj <- subset(Seurat_Obj, idents=lineage_table$clone_id[1:9])
+  subset_Seurat_Obj@meta.data$Day <- factor(subset_Seurat_Obj@meta.data$Day,
+                                            levels = c("d0", "d5", "d12", "d28", "d60", "d90", "d120", "d180"))
+  
+  ### draw the PCA & UMAP
+  DimPlot(subset_Seurat_Obj, reduction = "pca", split.by = "clone_id", group.by = "Day",
+          ncol = 3, pt.size = 2) +
+    labs(title = "PCA of the Top 9 Clones")
+  ggsave(file = paste0(outputDir, "PCA_Top_9_Clones_TFH.png"), width = 20, height = 10, dpi = 300)
+  DimPlot(subset_Seurat_Obj, reduction = "umap", split.by = "clone_id", group.by = "Day",
+          ncol = 3, pt.size = 2) +
+    labs(title = "UMAP of the Top 9 Clones")
+  ggsave(file = paste0(outputDir, "UMAP_Top_9_Clones_TFH.png"), width = 20, height = 10, dpi = 300)
   
   
   #
@@ -643,7 +664,7 @@ clonal_tracking <- function(Seurat_RObj_path="./data/Ali_Tcell_combined.RDATA",
   
   
   #
-  ### UMAP with the top 9 clones
+  ### PCA & UMAP with the top 9 clones from the "All cell" result
   #
   
   ### subset preparation for the PCA & UMAP
