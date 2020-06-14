@@ -577,12 +577,34 @@ tfh_additional_analyses <- function(Seurat_RObj_path="./data/Ali_Tcell_combined.
   ### Classifier to classify "recall" and "resting"
   #
   
+  ### new output directory for the results
+  outputDir2 <- paste0(outputDir2, "Classifier/")
+  dir.create(outputDir2, showWarnings = FALSE, recursive = TRUE)
+  
   ### set parameters
   set.seed(1234)
-  featureSelectionNum <- 1000
+  featureSelectionNum <- 100
   methodTypes <- c("svmLinear", "svmRadial", "gbm", "rf", "LogitBoost", "knn")
   methodNames <- c("SVMLinear", "SVMRadial", "GBM", "RandomForest", "LogitBoost", "K-NN")
   train_control <- trainControl(method="LOOCV", classProbs = TRUE, savePredictions = TRUE, verboseIter = FALSE)
+  
+  ### because there are so many resting samples, we randomly choose the resting samples
+  ### as the same number of the recall samples
+  random_resting_idx <- sample(x = resting_idx, size = length(recall_idx))
+  
+  ### bar plot to show 'Day' distribution of the recall and random resting samples
+  time_points <- c("d0", "d5", "d12", "d28", "d60", "d90", "d120", "d180")
+  recall_day_dist <- sapply(time_points, function(x) length(which(Seurat_Obj@meta.data$Day[recall_idx] == x)))
+  resting_day_dist <- sapply(time_points, function(x) length(which(Seurat_Obj@meta.data$Day[random_resting_idx] == x)))
+  
+  ### draw the bar plot
+  png(paste0(outputDir2, "Barplot_Sample_Numbers_Classifier.png"), width = 2000, height = 1000, res = 110)
+  par(mfrow = c(1,2))
+  recall_bp <- barplot(recall_day_dist, main = "The Number of Recall Samples (1092 in total) for Classifier")
+  text(recall_bp, 0, recall_day_dist, cex=1, pos=3)
+  resting_bp <- barplot(resting_day_dist, main = "The Number of Resting Samples (1092 in total) for Classifier")
+  text(resting_bp, 0, resting_day_dist, cex=1, pos=3)
+  dev.off()
   
   #'******************************************************************************
   #' A function to transform RNA-Seq data with VST in DESeq2 package
@@ -638,7 +660,7 @@ tfh_additional_analyses <- function(Seurat_RObj_path="./data/Ali_Tcell_combined.
   ### normalize the read counts
   ### before the normalization, only keep the recall and random resting samples
   input_data <- normalizeRNASEQwithVST(readCount = data.frame(Seurat_Obj@assays$RNA@counts[,c(recall_idx,
-                                                                                              sample(x = resting_idx, size = length(recall_idx)))],
+                                                                                              random_resting_idx)],
                                                               stringsAsFactors = FALSE, check.names = FALSE))
   
   ### reduce the gene size based on variance
@@ -648,13 +670,18 @@ tfh_additional_analyses <- function(Seurat_RObj_path="./data/Ali_Tcell_combined.
   ### annotate class for the input data
   input_data <- data.frame(t(input_data), stringsAsFactors = FALSE, check.names = FALSE)
   input_data$Type <- factor(c(rep("Recall", length(recall_idx)),
-                              rep("Resting", length(recall_idx))), levels = c("Recall", "Resting"))
+                              rep("Resting", length(recall_idx))), levels = c("Resting", "Recall"))
   
   p <- list()
   for(i in 1:length(methodTypes)) {
+    writeLines(paste(methodTypes[i]))
     model <- train(Type~., data=input_data, trControl=train_control, method=methodTypes[i])
-    roc <- roc(model$pred$obs, model$pred$Type)
-    p[[i]] <- plot.roc(roc, main = paste(methodNames[i], "Using Gene Expressions"), legacy.axes = TRUE, print.auc = TRUE, auc.polygon = TRUE, xlim = c(1,0), ylim = c(0,1), grid = TRUE)
+    roc <- roc(model$pred$obs, model$pred$Recall)
+    p[[i]] <- plot.roc(roc, main = paste(methodNames[i], "Using Gene Expressions\n",
+                                         "Accuracy =", round(mean(model$results$Accuracy), 3)),
+                       legacy.axes = TRUE, print.auc = TRUE, auc.polygon = TRUE,
+                       xlim = c(1,0), ylim = c(0,1), grid = TRUE, cex.main = 1)
+    gc()
   }
   
   pdf(paste0(outputDir2, "Classifier_Recall_vs_Resting_AUCs_", featureSelectionNum, ".pdf"))
