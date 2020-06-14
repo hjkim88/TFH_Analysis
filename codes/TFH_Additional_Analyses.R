@@ -673,21 +673,27 @@ tfh_additional_analyses <- function(Seurat_RObj_path="./data/Ali_Tcell_combined.
                               rep("Resting", length(recall_idx))), levels = c("Resting", "Recall"))
   
   p <- list()
+  acc <- NULL
   for(i in 1:length(methodTypes)) {
     writeLines(paste(methodTypes[i]))
     model <- train(Type~., data=input_data, trControl=train_control, method=methodTypes[i])
     roc <- roc(model$pred$obs, model$pred$Recall)
+    acc <- c(acc, round(mean(model$results$Accuracy), 3))
     p[[i]] <- plot.roc(roc, main = paste(methodNames[i], "Using Gene Expressions\n",
-                                         "Accuracy =", round(mean(model$results$Accuracy), 3)),
+                                         "Accuracy =", acc[i]),
                        legacy.axes = TRUE, print.auc = TRUE, auc.polygon = TRUE,
                        xlim = c(1,0), ylim = c(0,1), grid = TRUE, cex.main = 1)
     gc()
   }
   
-  pdf(paste0(outputDir2, "Classifier_Recall_vs_Resting_AUCs_", featureSelectionNum, ".pdf"))
+  png(paste0(outputDir2, "Classifier_Recall_vs_Resting_AUCs_", featureSelectionNum, ".png"),
+      width = 2000, height = 2000, res = 350)
   par(mfrow=c(3, 2))
   for(i in 1:length(methodTypes)) {
-    plot(p[[i]])
+    plot.roc(p[[i]], main = paste(methodNames[i], "Using Gene Expressions\n",
+                               "Accuracy =", acc[i]),
+             legacy.axes = TRUE, print.auc = TRUE, auc.polygon = TRUE,
+             xlim = c(1,0), ylim = c(0,1), grid = TRUE, cex.main = 1)
   }
   dev.off()
   
