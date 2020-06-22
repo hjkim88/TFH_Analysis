@@ -664,7 +664,7 @@ tfh_additional_analyses <- function(Seurat_RObj_path="./data/Ali_Tcell_combined.
                                                               stringsAsFactors = FALSE, check.names = FALSE))
   
   ### reduce the gene size based on variance
-  ### only selects high variance genes
+  ### only select high variance genes
   input_data <- selectTopV(input_data, featureSelectionNum)
   
   ### annotate class for the input data
@@ -672,6 +672,8 @@ tfh_additional_analyses <- function(Seurat_RObj_path="./data/Ali_Tcell_combined.
   input_data$Type <- factor(c(rep("Recall", length(recall_idx)),
                               rep("Resting", length(recall_idx))), levels = c("Resting", "Recall"))
   
+  ### build classifier and test
+  ### LOOCV
   p <- list()
   acc <- NULL
   for(i in 1:length(methodTypes)) {
@@ -686,6 +688,7 @@ tfh_additional_analyses <- function(Seurat_RObj_path="./data/Ali_Tcell_combined.
     gc()
   }
   
+  ### draw ROC curves
   png(paste0(outputDir2, "Classifier_Recall_vs_Resting_AUCs_", featureSelectionNum, ".png"),
       width = 2000, height = 2000, res = 350)
   par(mfrow=c(3, 2))
