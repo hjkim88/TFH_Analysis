@@ -17,12 +17,12 @@
 #   Example
 #               > source("The_directory_of_Combine_GEX_And_TCR.R/Combine_GEX_And_TCR.R")
 #               > combine_gex_tcr(Seurat_RObj_path="./data/Ali_Tcell_agg.rds",
-#                                 TCR_data_dirs="./data/Ali_clones_mapped_TCR_newMay11.txt",
+#                                 TCR_data_dirs="./data/JCC280_VDJoutputs/",
 #                                 outputDir="./results/")
 ###
 
 combine_gex_tcr <- function(Seurat_RObj_path="./data/Ali_Tcell_agg.rds",
-                            TCR_data_path="./data/Ali_clones_mapped_TCR_newMay11.txt",
+                            TCR_data_path="./data/JCC280_VDJoutputs/",
                             outputDir="./data/") {
   
   ### load library
