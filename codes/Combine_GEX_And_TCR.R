@@ -18,11 +18,15 @@
 #               > source("The_directory_of_Combine_GEX_And_TCR.R/Combine_GEX_And_TCR.R")
 #               > combine_gex_tcr(Seurat_RObj_path="./data/Ali_Tcell_agg.rds",
 #                                 TCR_data_dirs="./data/JCC280_VDJoutputs/",
+#                                 additional_info_path="./data/Ali_clones_mapped_TCR_newMay11.txt",
+#                                 stefan_obj_path="./data/Ali_all_agg_wTCR.rds",
 #                                 outputDir="./results/")
 ###
 
 combine_gex_tcr <- function(Seurat_RObj_path="./data/JCC243_JCC280_Aggregregress.Robj",
                             TCR_data_dirs="./data/JCC280_VDJoutputs/",
+                            additional_info_path="./data/Ali_clones_mapped_TCR_newMay11.txt",
+                            stefan_obj_path="./data/Ali_all_agg_wTCR.rds",
                             outputDir="./data/") {
   
   ### load library
@@ -77,9 +81,6 @@ combine_gex_tcr <- function(Seurat_RObj_path="./data/JCC243_JCC280_Aggregregress
   ### retain the TCR files that are already in the Seurat object 
   TCR_data_dirs <- TCR_data_dirs[keep_idx]
   
-  ### remove BCR files - only include TCR files
-  TCR_data_dirs <- TCR_data_dirs[grep("TCR", TCR_data_dirs)]
-  
   ### combine the TCR info
   tcr <- NULL
   for(i in 1:length(TCR_data_dirs)) {
@@ -91,47 +92,54 @@ combine_gex_tcr <- function(Seurat_RObj_path="./data/JCC243_JCC280_Aggregregress
     tcr_data <- read.csv(file = TCR_data_dirs[i],
                          stringsAsFactors = FALSE, check.names = FALSE)
     
-    ### remove the -* at the end of each barcode.
-    tcr_data$barcode <- sapply(strsplit(tcr_data$barcode, split = "-", fixed = TRUE), function(x) x[1])
-    
-    ### remove the rows that do not have CDR3 sequence
-    tcr_data <- tcr_data[which(tcr_data$cdr3 != "None"),]
-    
-    ### remove redundant rows
-    tcr_data <- tcr_data[!duplicated(tcr_data[c("barcode", "cdr3")]),]
-    
-    ### order by "chain" so that TRA rows come first than TRB rows
-    ### and secondly, order by "CDR3 Nucleotide" sequence
-    tcr_data <- tcr_data[order(as.character(tcr_data$cdr3_nt)),]
-    
-    ### merge different TRA & TRB info to one row
-    dups <- which(duplicated(tcr_data$barcode))
-    if(length(dups) > 0) {
-      temp <- tcr_data[dups,]
-      tcr_data <- tcr_data[-dups,]
-      rownames(tcr_data) <- tcr_data$barcode
-      for(barcode in tcr_data$barcode) {
-        idx <- which(temp$barcode == barcode)
-        tcr_data[barcode,"cdr3"] <- paste(c(tcr_data[barcode,"cdr3"], temp[idx, "cdr3"]), collapse = ";")
-        tcr_data[barcode,"cdr3_nt"] <- paste(c(tcr_data[barcode,"cdr3_nt"], temp[idx, "cdr3_nt"]), collapse = ";")
-        tcr_data[barcode,"productive"] <- paste(c(tcr_data[barcode,"productive"], temp[idx, "productive"]), collapse = ";")
-        tcr_data[barcode,"reads"] <- paste(c(tcr_data[barcode,"reads"], temp[idx, "reads"]), collapse = ";")
-        tcr_data[barcode,"umis"] <- paste(c(tcr_data[barcode,"umis"], temp[idx, "umis"]), collapse = ";")
+    ### check if this is TCR info
+    if(length(which(unique(tcr_data$chain) %in% c("TRA", "TRB"))) > 0) {
+      ### remove the -* at the end of each barcode.
+      tcr_data$barcode <- sapply(strsplit(tcr_data$barcode, split = "-", fixed = TRUE), function(x) x[1])
+      
+      ### remove the rows that do not have CDR3 sequence
+      tcr_data <- tcr_data[which(tcr_data$cdr3 != "None"),]
+      
+      ### remove redundant rows
+      tcr_data <- tcr_data[!duplicated(tcr_data[c("barcode", "cdr3")]),]
+      
+      ### order by "chain" so that TRA rows come first than TRB rows
+      ### and secondly, order by "CDR3 Nucleotide" sequence
+      tcr_data <- tcr_data[order(as.character(tcr_data$chain), as.character(tcr_data$cdr3_nt)),]
+      
+      ### annotate TRA & TRB info to the cdr3 sequences
+      tcr_data$cdr3 <- paste0(tcr_data$chain, ":", tcr_data$cdr3)
+      tcr_data$cdr3_nt <- paste0(tcr_data$chain, ":", tcr_data$cdr3_nt)
+      
+      ### now merge different TRA & TRB info to one row
+      dups <- which(duplicated(tcr_data$barcode))
+      if(length(dups) > 0) {
+        temp <- tcr_data[dups,]
+        tcr_data <- tcr_data[-dups,]
+        rownames(tcr_data) <- tcr_data$barcode
+        for(barcode in tcr_data$barcode) {
+          idx <- which(temp$barcode == barcode)
+          tcr_data[barcode,"cdr3"] <- paste(c(tcr_data[barcode,"cdr3"], temp[idx, "cdr3"]), collapse = ";")
+          tcr_data[barcode,"cdr3_nt"] <- paste(c(tcr_data[barcode,"cdr3_nt"], temp[idx, "cdr3_nt"]), collapse = ";")
+          tcr_data[barcode,"productive"] <- paste(c(tcr_data[barcode,"productive"], temp[idx, "productive"]), collapse = ";")
+          tcr_data[barcode,"reads"] <- paste(c(tcr_data[barcode,"reads"], temp[idx, "reads"]), collapse = ";")
+          tcr_data[barcode,"umis"] <- paste(c(tcr_data[barcode,"umis"], temp[idx, "umis"]), collapse = ";")
+        }
       }
-    }
-    
-    ### only retain informative columns
-    tcr_data <- tcr_data[,c("barcode", "raw_clonotype_id", "cdr3", "cdr3_nt", "reads", "umis", "productive")]
-    colnames(tcr_data) <- c("barcode", "raw_clonotype_id", "cdr3_aa", "cdr3_nt", "tcr_reads", "tcr_umis", "tcr_productive")
-    
-    ### add library info
-    tcr_data$library <- tcr_libs[basename(TCR_data_dirs[i])]
-    
-    ### combine the TCR data for all the data
-    if(is.null(tcr)) {
-      tcr <- tcr_data
-    } else {
-      tcr <- rbind(tcr, tcr_data)
+      
+      ### only retain informative columns
+      tcr_data <- tcr_data[,c("barcode", "raw_clonotype_id", "cdr3", "cdr3_nt", "reads", "umis", "productive")]
+      colnames(tcr_data) <- c("barcode", "raw_clonotype_id", "cdr3_aa", "cdr3_nt", "tcr_reads", "tcr_umis", "tcr_productive")
+      
+      ### add library info
+      tcr_data$library <- tcr_libs[basename(TCR_data_dirs[i])]
+      
+      ### combine the TCR data for all the data
+      if(is.null(tcr)) {
+        tcr <- tcr_data
+      } else {
+        tcr <- rbind(tcr, tcr_data)
+      }
     }
     
   }
@@ -150,34 +158,21 @@ combine_gex_tcr <- function(Seurat_RObj_path="./data/JCC243_JCC280_Aggregregress
   rownames(Seurat_Obj@meta.data) <- Seurat_Obj@meta.data[,"GexCellFull"]
   
   
+  ### load Stefan's Seurat object
+  stefan_seurat_obj <- readRDS(stefan_obj_path)
+  
+  ### make the object order same as the main Seurat object
+  stefan_seurat_obj@assays$RNA@counts <- stefan_seurat_obj@assays$RNA@counts[,rownames(Seurat_Obj@meta.data)]
+  stefan_seurat_obj@meta.data <- stefan_seurat_obj@meta.data[colnames(stefan_seurat_obj@assays$RNA@counts),]
+  
+  ### get tissue info from Stefan't object
+  Seurat_Obj@meta.data$Tissue <- stefan_seurat_obj@meta.data$Tissue
   
   
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  ### load the Seurat object and save the object name
-  Seurat_Obj <- readRDS(Seurat_RObj_path)
-  
-  ### load filtered contig annotation data
-  tcr_data <- read.table(file = TCR_data_path, sep = "\t", header = TRUE,
-                         stringsAsFactors = FALSE, check.names = FALSE)
-  rownames(tcr_data) <- tcr_data$barcode
-  
-  ### check if NT sequences and clone ids are the same between the GEX and TCR
-  a <- Seurat_Obj@meta.data[rownames(tcr_data),"match.cdr"]
-  b <- tcr_data$match.cdr
-  print(identical(a, b))
-  a <- Seurat_Obj@meta.data[rownames(tcr_data),"clone_id"]
-  b <- tcr_data$clone_id
-  print(identical(a, b))
+  ### load additional info (bulk TCR & scTCR[PCR])
+  info <- read.table(file = additional_info_path, sep = "\t", header = TRUE,
+                     stringsAsFactors = FALSE, check.names = FALSE)
+  rownames(info) <- info$barcode
   
   ### attach some columns in the TCR to the GEX
   added_cols <- c("MHCi_score_cdr3a",
@@ -190,9 +185,12 @@ combine_gex_tcr <- function(Seurat_RObj_path="./data/JCC243_JCC280_Aggregregress
                   "matched_bulk_alpha",
                   "matched_bulk_beta")
   Seurat_Obj@meta.data[added_cols] <- NA
-  Seurat_Obj@meta.data[rownames(tcr_data),added_cols] <- tcr_data[,added_cols]
+  Seurat_Obj@meta.data[rownames(info),added_cols] <- info[,added_cols]
+  
+  
+  ### assign clonotype based on 
   
   ### save the new combined RDATA file
-  save(list = c("Seurat_Obj"), file = paste0(outputDir, "Ali_Tcell_combined.RDATA"))
+  save(list = c("Seurat_Obj"), file = paste0(outputDir, "Ali_Tcell_combined2.RDATA"))
   
 }
