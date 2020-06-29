@@ -16,7 +16,7 @@
 #
 #   Example
 #               > source("The_directory_of_Combine_GEX_And_TCR.R/Combine_GEX_And_TCR.R")
-#               > combine_gex_tcr(Seurat_RObj_path="./data/Ali_Tcell_agg.rds",
+#               > combine_gex_tcr(Seurat_RObj_path="./data/JCC243_JCC280_Aggregregress.Robj",
 #                                 TCR_data_dirs="./data/JCC280_VDJoutputs/",
 #                                 additional_info_path="./data/Ali_clones_mapped_TCR_newMay11.txt",
 #                                 stefan_obj_path="./data/Ali_all_agg_wTCR.rds",
@@ -100,6 +100,9 @@ combine_gex_tcr <- function(Seurat_RObj_path="./data/JCC243_JCC280_Aggregregress
       ### remove the rows that do not have CDR3 sequence
       tcr_data <- tcr_data[which(tcr_data$cdr3 != "None"),]
       
+      ### remove the rows with productive == False
+      tcr_data <- tcr_data[which(tcr_data$productive == "True"),]
+      
       ### remove redundant rows
       tcr_data <- tcr_data[!duplicated(tcr_data[c("barcode", "cdr3")]),]
       
@@ -144,6 +147,17 @@ combine_gex_tcr <- function(Seurat_RObj_path="./data/JCC243_JCC280_Aggregregress
     
   }
   
+  ### keep the TCR info only if there are both alpha & beta chains
+  is_keep <- sapply(tcr$cdr3_aa, function(x) {
+    if(grepl("TRA:", x) && grepl("TRB:", x)) {
+      return (TRUE)
+    } else {
+      return (FALSE)
+    }
+  })
+  tcr <- tcr[which(is_keep),]
+  
+  
   ### attach the TCR info to the metadata of the Seurat object
   obj_colnames <- colnames(Seurat_Obj@meta.data)
   tcr_colnames <- colnames(tcr)
@@ -170,6 +184,7 @@ combine_gex_tcr <- function(Seurat_RObj_path="./data/JCC243_JCC280_Aggregregress
   
   
   ### load additional info (bulk TCR & scTCR[PCR])
+  ### outdated file - we will not use this one
   info <- read.table(file = additional_info_path, sep = "\t", header = TRUE,
                      stringsAsFactors = FALSE, check.names = FALSE)
   rownames(info) <- info$barcode
