@@ -28,6 +28,7 @@
 #                                 stefan_obj_path="./data/Ali_all_agg_wTCR.rds",
 #                                 scTCR_PCR_info_path="./data/scTCR(PCR)/Ali_paired_sc_clones_JCC283.tsv",
 #                                 bulkTCR_info_path="./data/bulk/Ali_bulk_allDonor_clones.tsv",
+#                                 stefan_tcell_obj_path="./data/Ali_Tcell_agg_NEW.rds",
 #                                 outputDir="./data/")
 ###
 
@@ -36,6 +37,7 @@ combine_gex_tcr <- function(Seurat_RObj_path="./data/JCC243_JCC280_Aggregregress
                             stefan_obj_path="./data/Ali_all_agg_wTCR.rds",
                             scTCR_PCR_info_path="./data/scTCR(PCR)/Ali_paired_sc_clones_JCC283.tsv",
                             bulkTCR_info_path="./data/bulk/Ali_bulk_allDonor_clones.tsv",
+                            stefan_tcell_obj_path="./data/Ali_Tcell_agg_NEW.rds",
                             outputDir="./data/") {
   
   ### load library
@@ -223,6 +225,19 @@ combine_gex_tcr <- function(Seurat_RObj_path="./data/JCC243_JCC280_Aggregregress
   }
   
   ### save the new combined RDATA file
+  save(list = c("Seurat_Obj"), file = paste0(outputDir, "Ali_All_combined_NEW.RDATA"))
+  
+  
+  ### load Stefan's t-cell object
+  stefan_tcell_seurat_obj <- readRDS(stefan_tcell_obj_path)
+  
+  ### only keep t-cells from the Seurat object
+  Seurat_Obj <- subset(Seurat_Obj, cells = rownames(stefan_tcell_seurat_obj@meta.data))
+  
+  ### rownames in the meta.data should be in the same order as colnames in the counts
+  Seurat_Obj@meta.data <- Seurat_Obj@meta.data[colnames(Seurat_Obj@assays$RNA@counts),]
+  
+  ### save the new t-cell only RDATA file
   save(list = c("Seurat_Obj"), file = paste0(outputDir, "Ali_Tcell_combined_NEW.RDATA"))
   
 }
