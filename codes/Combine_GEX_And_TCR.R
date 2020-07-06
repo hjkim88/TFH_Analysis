@@ -9,6 +9,13 @@
 #               for this donor and two others from the study.
 #               Here, the GEX and the TCR data are combined.
 #
+#               Since Stefan's object does not have some TCR info (single chain or multiple chains),
+#               I attached those info additonally, but the basic idea of having only one alpha and
+#               only one beta for clonal lineage make sense, so I used the clone_id for the lineage tracing.
+#               single chain clonoal lineage does not make sense in two-chain data, and even if there are
+#               two in-frame alpha chains, if one alpha chain's UMI count is significantly larger, then
+#               that alpha and beta pair should be considered in the lineage tracing.
+#
 #   Instruction
 #               1. Source("Combine_GEX_And_TCR.R")
 #               2. Run the function "combine_gex_tcr" - specify the input file paths and the output directory
@@ -18,15 +25,17 @@
 #               > source("The_directory_of_Combine_GEX_And_TCR.R/Combine_GEX_And_TCR.R")
 #               > combine_gex_tcr(Seurat_RObj_path="./data/JCC243_JCC280_Aggregregress.Robj",
 #                                 TCR_data_dirs="./data/JCC280_VDJoutputs/",
-#                                 additional_info_path="./data/Ali_clones_mapped_TCR_newMay11.txt",
 #                                 stefan_obj_path="./data/Ali_all_agg_wTCR.rds",
-#                                 outputDir="./results/")
+#                                 scTCR_PCR_info_path="./data/scTCR(PCR)/Ali_paired_sc_clones_JCC283.tsv",
+#                                 bulkTCR_info_path="./data/bulk/Ali_bulk_allDonor_clones.tsv",
+#                                 outputDir="./data/")
 ###
 
 combine_gex_tcr <- function(Seurat_RObj_path="./data/JCC243_JCC280_Aggregregress.Robj",
                             TCR_data_dirs="./data/JCC280_VDJoutputs/",
-                            additional_info_path="./data/Ali_clones_mapped_TCR_newMay11.txt",
                             stefan_obj_path="./data/Ali_all_agg_wTCR.rds",
+                            scTCR_PCR_info_path="./data/scTCR(PCR)/Ali_paired_sc_clones_JCC283.tsv",
+                            bulkTCR_info_path="./data/bulk/Ali_bulk_allDonor_clones.tsv",
                             outputDir="./data/") {
   
   ### load library
@@ -147,15 +156,15 @@ combine_gex_tcr <- function(Seurat_RObj_path="./data/JCC243_JCC280_Aggregregress
     
   }
   
-  ### keep the TCR info only if there are both alpha & beta chains
-  is_keep <- sapply(tcr$cdr3_aa, function(x) {
-    if(grepl("TRA:", x) && grepl("TRB:", x)) {
-      return (TRUE)
-    } else {
-      return (FALSE)
-    }
-  })
-  tcr <- tcr[which(is_keep),]
+  # ### keep the TCR info only if there are both alpha & beta chains
+  # is_keep <- sapply(tcr$cdr3_aa, function(x) {
+  #   if(grepl("TRA:", x) && grepl("TRB:", x)) {
+  #     return (TRUE)
+  #   } else {
+  #     return (FALSE)
+  #   }
+  # })
+  # tcr <- tcr[which(is_keep),]
   
   
   ### attach the TCR info to the metadata of the Seurat object
@@ -171,6 +180,9 @@ combine_gex_tcr <- function(Seurat_RObj_path="./data/JCC243_JCC280_Aggregregress
   Seurat_Obj@meta.data <- Seurat_Obj@meta.data[,c("GexCellFull", "GexCellShort", obj_colnames, setdiff(tcr_colnames, c("barcode", "library")))]
   rownames(Seurat_Obj@meta.data) <- Seurat_Obj@meta.data[,"GexCellFull"]
   
+  ### remove the "productive" column since we only used the TRUE chains
+  Seurat_Obj@meta.data <- Seurat_Obj@meta.data[,-which(colnames(Seurat_Obj@meta.data) == "tcr_productive")]
+  
   
   ### load Stefan's Seurat object
   stefan_seurat_obj <- readRDS(stefan_obj_path)
@@ -179,11 +191,24 @@ combine_gex_tcr <- function(Seurat_RObj_path="./data/JCC243_JCC280_Aggregregress
   stefan_seurat_obj@assays$RNA@counts <- stefan_seurat_obj@assays$RNA@counts[,rownames(Seurat_Obj@meta.data)]
   stefan_seurat_obj@meta.data <- stefan_seurat_obj@meta.data[colnames(stefan_seurat_obj@assays$RNA@counts),]
   
-  ### get tissue info from Stefan't object
-  Seurat_Obj@meta.data$Tissue <- stefan_seurat_obj@meta.data$Tissue
+  ### get information from the Stefan's object
+  new_cols <- setdiff(colnames(stefan_seurat_obj@meta.data), colnames(Seurat_Obj@meta.data))
+  Seurat_Obj@meta.data[new_cols] <- stefan_seurat_obj@meta.data[,new_cols]
   
   
   ### load additional info (bulk TCR & scTCR[PCR])
+  scTCR_PCR <- read.table(file = scTCR_PCR_info_path, header = TRUE, sep = "\t",
+                          stringsAsFactors = FALSE, check.names = FALSE)
+  bulk_TCR <- read.table(file = bulkTCR_info_path, header = TRUE, sep = "\t",
+                         stringsAsFactors = FALSE, check.names = FALSE)
+  
+  
+  
+  
+  
+  
+  
+  
   ### outdated file - we will not use this one
   info <- read.table(file = additional_info_path, sep = "\t", header = TRUE,
                      stringsAsFactors = FALSE, check.names = FALSE)
