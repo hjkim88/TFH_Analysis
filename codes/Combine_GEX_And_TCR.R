@@ -234,6 +234,17 @@ combine_gex_tcr <- function(Seurat_RObj_path="./data/JCC243_JCC280_Aggregregress
   ### only keep t-cells from the Seurat object
   Seurat_Obj <- subset(Seurat_Obj, cells = rownames(stefan_tcell_seurat_obj@meta.data))
   
+  ### replace seurat.cluster and ident
+  Seurat_Obj@meta.data$ident <- stefan_tcell_seurat_obj@meta.data$ident
+  Seurat_Obj@meta.data$seurat_clusters <- stefan_tcell_seurat_obj@meta.data$seurat_clusters
+  
+  ### replace PCA, TSNE, and UMAP
+  Seurat_Obj@reductions <- stefan_tcell_seurat_obj@reductions
+  
+  ### replace others
+  Seurat_Obj@graphs <- stefan_tcell_seurat_obj@graphs
+  Seurat_Obj@commands <- stefan_tcell_seurat_obj@commands
+  
   ### rownames in the meta.data should be in the same order as colnames in the counts
   Seurat_Obj@meta.data <- Seurat_Obj@meta.data[colnames(Seurat_Obj@assays$RNA@counts),]
   
