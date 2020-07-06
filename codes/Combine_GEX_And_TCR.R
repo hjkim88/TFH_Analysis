@@ -202,35 +202,27 @@ combine_gex_tcr <- function(Seurat_RObj_path="./data/JCC243_JCC280_Aggregregress
   bulk_TCR <- read.table(file = bulkTCR_info_path, header = TRUE, sep = "\t",
                          stringsAsFactors = FALSE, check.names = FALSE)
   
+  ### attach scTCR[PCR] info to the Seurat object
+  Seurat_Obj@meta.data$matched_SC <- ifelse(Seurat_Obj@meta.data$match.cdr %in% scTCR_PCR$match.cdr, "yes", "no" )
+  Seurat_Obj@meta.data$matched_SC_alpha_only <- ifelse(Seurat_Obj@meta.data$cdr3a %in% scTCR_PCR$cdr3a, "yes", "no" )
+  Seurat_Obj@meta.data$matched_SC_beta_only <- ifelse(Seurat_Obj@meta.data$cdr3b %in% scTCR_PCR$cdr3b, "yes", "no" )
   
+  ### attach bulk TCR info to the Seurat object
+  bulk_TCR <- bulk_TCR[which(bulk_TCR$donor == "321-05"),]
+  Seurat_Obj@meta.data$matched_bulk_alpha <- ifelse(Seurat_Obj@meta.data$cdr3a %in% bulk_TCR$cdr3aa, "yes", "no" )
+  Seurat_Obj@meta.data$matched_bulk_beta <- ifelse(Seurat_Obj@meta.data$cdr3b %in% bulk_TCR$cdr3aa, "yes", "no" )
   
-  
-  
-  
-  
-  
-  ### outdated file - we will not use this one
-  info <- read.table(file = additional_info_path, sep = "\t", header = TRUE,
-                     stringsAsFactors = FALSE, check.names = FALSE)
-  rownames(info) <- info$barcode
-  
-  ### attach some columns in the TCR to the GEX
-  added_cols <- c("MHCi_score_cdr3a",
-                  "MHCi_score_cdr3b",
-                  "knn_MHCi_cdr3a",       
-                  "knn_MHCi_cdr3b",
-                  "matched_SC",
-                  "matched_SC_alpha_only",
-                  "matched_SC_beta_only", 
-                  "matched_bulk_alpha",
-                  "matched_bulk_beta")
-  Seurat_Obj@meta.data[added_cols] <- NA
-  Seurat_Obj@meta.data[rownames(info),added_cols] <- info[,added_cols]
-  
-  
-  ### assign clonotype based on 
+  ### check same match.cdr regardless of library belong to the same clone_id
+  dups <- unique(Seurat_Obj@meta.data$clone_id[which(duplicated(Seurat_Obj@meta.data$clone_id))])
+  dups <- dups[which(!is.na(dups))]
+  for(dup in dups) {
+    target_idx <- which(Seurat_Obj@meta.data$clone_id == dup)
+    if(length(unique(Seurat_Obj@meta.data$match.cdr[target_idx])) > 1) {
+      writeLines(paste("clone_id =", dup))
+    }
+  }
   
   ### save the new combined RDATA file
-  save(list = c("Seurat_Obj"), file = paste0(outputDir, "Ali_Tcell_combined2.RDATA"))
+  save(list = c("Seurat_Obj"), file = paste0(outputDir, "Ali_Tcell_combined_NEW.RDATA"))
   
 }
