@@ -18,11 +18,11 @@
 #
 #   Example
 #               > source("The_directory_of_TFH_Additional_Analyses.R/TFH_Additional_Analyses.R")
-#               > tfh_additional_analyses(Seurat_RObj_path="./data/Ali_Tcell_combined.RDATA",
+#               > tfh_additional_analyses(Seurat_RObj_path="./data/Ali_Tcell_combined_NEW.RDATA",
 #                                         outputDir="./results/")
 ###
 
-tfh_additional_analyses <- function(Seurat_RObj_path="./data/Ali_Tcell_combined.RDATA",
+tfh_additional_analyses <- function(Seurat_RObj_path="./data/Ali_Tcell_combined_NEW.RDATA",
                                     outputDir="./results/") {
   
   ### load libraries
@@ -285,17 +285,19 @@ tfh_additional_analyses <- function(Seurat_RObj_path="./data/Ali_Tcell_combined.
   ### compare naive and recall
   #
   
+  # DimPlot(Seurat_Obj, reduction = "umap", group.by = "seurat_clusters", pt.size = 1, label = TRUE)
+  
   ### Adding more informative columns to the meta.data
   Seurat_Obj@meta.data$CD4_CD8 <- NA
-  Seurat_Obj@meta.data$CD4_CD8[which(Seurat_Obj@meta.data$seurat_clusters %in% c(0,1,3,4,5,8,9,10,13,14,15,17))] <- "CD4"
-  Seurat_Obj@meta.data$CD4_CD8[which(Seurat_Obj@meta.data$seurat_clusters %in% c(2,6,7,11,12,16,18))] <- "CD8"
+  Seurat_Obj@meta.data$CD4_CD8[which(Seurat_Obj@meta.data$seurat_clusters %in% c(0,1,3,4,7,8,9,11,13,14,16,17))] <- "CD4"
+  Seurat_Obj@meta.data$CD4_CD8[which(Seurat_Obj@meta.data$seurat_clusters %in% c(2,5,6,10,12,15,18))] <- "CD8"
   DimPlot(Seurat_Obj, reduction = "umap", group.by = "CD4_CD8", pt.size = 1, label = TRUE)
   Seurat_Obj@meta.data$Cell_Type <- NA
-  Seurat_Obj@meta.data$Cell_Type[which(Seurat_Obj@meta.data$seurat_clusters %in% c(0,1,2,3,9,10,11,14,16))] <- "Naive"
-  Seurat_Obj@meta.data$Cell_Type[which(Seurat_Obj@meta.data$seurat_clusters %in% c(4,5,7,12,13,15))] <- "Eff-Mem"
-  Seurat_Obj@meta.data$Cell_Type[which(Seurat_Obj@meta.data$seurat_clusters %in% c(6))] <- "MAIT-NKT"
+  Seurat_Obj@meta.data$Cell_Type[which(Seurat_Obj@meta.data$seurat_clusters %in% c(0,1,2,4,8,10,11,15,16))] <- "Naive"
+  Seurat_Obj@meta.data$Cell_Type[which(Seurat_Obj@meta.data$seurat_clusters %in% c(3,6,7,12,13,14))] <- "Eff-Mem"
+  Seurat_Obj@meta.data$Cell_Type[which(Seurat_Obj@meta.data$seurat_clusters %in% c(5))] <- "MAIT-NKT"
   Seurat_Obj@meta.data$Cell_Type[which(Seurat_Obj@meta.data$seurat_clusters %in% c(18))] <- "Hobits"
-  Seurat_Obj@meta.data$Cell_Type[which(Seurat_Obj@meta.data$seurat_clusters %in% c(8))] <- "Treg"
+  Seurat_Obj@meta.data$Cell_Type[which(Seurat_Obj@meta.data$seurat_clusters %in% c(9))] <- "Treg"
   Seurat_Obj@meta.data$Cell_Type[which(Seurat_Obj@meta.data$seurat_clusters %in% c(17))] <- "TFH"
   DimPlot(Seurat_Obj, reduction = "umap", group.by = "Cell_Type", pt.size = 1, label = TRUE)
   Seurat_Obj@meta.data$Clone_Size_At_The_Time <- NA
@@ -361,7 +363,7 @@ tfh_additional_analyses <- function(Seurat_RObj_path="./data/Ali_Tcell_combined.
   
   ### expansion threshold
   ### if clone size > expansion threshold, the clone is regarded as "clonaly expanded"
-  expansion_threshold <- 5
+  expansion_threshold <- 2
   
   ### UMAP of "recall" vs "resting" in each time point
   Seurat_Obj@meta.data$Recall_Resting <- NA
@@ -584,27 +586,40 @@ tfh_additional_analyses <- function(Seurat_RObj_path="./data/Ali_Tcell_combined.
   ### set parameters
   set.seed(1234)
   featureSelectionNum <- 100
+  random_sampleNum <- 500
   methodTypes <- c("svmLinear", "svmRadial", "gbm", "rf", "LogitBoost", "knn")
   methodNames <- c("SVMLinear", "SVMRadial", "GBM", "RandomForest", "LogitBoost", "K-NN")
   train_control <- trainControl(method="LOOCV", classProbs = TRUE, savePredictions = TRUE, verboseIter = FALSE)
   
-  ### because there are so many resting samples, we randomly choose the resting samples
-  ### as the same number of the recall samples
-  random_resting_idx <- sample(x = resting_idx, size = length(recall_idx))
-  
   ### bar plot to show 'Day' distribution of the recall and random resting samples
   time_points <- c("d0", "d5", "d12", "d28", "d60", "d90", "d120", "d180")
   recall_day_dist <- sapply(time_points, function(x) length(which(Seurat_Obj@meta.data$Day[recall_idx] == x)))
-  resting_day_dist <- sapply(time_points, function(x) length(which(Seurat_Obj@meta.data$Day[random_resting_idx] == x)))
+  resting_day_dist <- sapply(time_points, function(x) length(which(Seurat_Obj@meta.data$Day[resting_idx] == x)))
   
   ### draw the bar plot
-  png(paste0(outputDir2, "Barplot_Sample_Numbers_Classifier.png"), width = 2000, height = 1000, res = 110)
+  png(paste0(outputDir2, "Barplot_Sample_Numbers_Distribution.png"), width = 2000, height = 1000, res = 110)
   par(mfrow = c(1,2))
-  recall_bp <- barplot(recall_day_dist, main = "The Number of Recall Samples (1092 in total) for Classifier")
+  recall_bp <- barplot(recall_day_dist, main = paste0("The Number of Recall Samples (", length(recall_idx), " in total)"))
   text(recall_bp, 0, recall_day_dist, cex=1, pos=3)
-  resting_bp <- barplot(resting_day_dist, main = "The Number of Resting Samples (1092 in total) for Classifier")
+  resting_bp <- barplot(resting_day_dist, main = paste0("The Number of Resting Samples (", length(resting_idx), " in total)"))
   text(resting_bp, 0, resting_day_dist, cex=1, pos=3)
   dev.off()
+  
+  ### because there are so many recall & resting samples, we randomly choose samples
+  random_recall_idx <- sample(x = recall_idx, size = random_sampleNum)
+  random_resting_idx <- sample(x = resting_idx, size = random_sampleNum)
+  random_recall_day_dist <- sapply(time_points, function(x) length(which(Seurat_Obj@meta.data$Day[random_recall_idx] == x)))
+  random_resting_day_dist <- sapply(time_points, function(x) length(which(Seurat_Obj@meta.data$Day[random_resting_idx] == x)))
+  
+  ### draw the bar plot with random samples that will be used for the classifier
+  png(paste0(outputDir2, "Barplot_Random_Sample_Numbers_Distribution.png"), width = 2000, height = 1000, res = 110)
+  par(mfrow = c(1,2))
+  recall_bp <- barplot(random_recall_day_dist, main = paste0("The Number of Randomly Chosen Recall Samples (", length(random_recall_idx), " in total)"))
+  text(recall_bp, 0, random_recall_day_dist, cex=1, pos=3)
+  resting_bp <- barplot(random_resting_day_dist, main = paste0("The Number of Randomly Chosen Resting Samples (", length(random_resting_idx), " in total)"))
+  text(resting_bp, 0, random_resting_day_dist, cex=1, pos=3)
+  dev.off()
+  
   
   #'******************************************************************************
   #' A function to transform RNA-Seq data with VST in DESeq2 package
@@ -659,7 +674,7 @@ tfh_additional_analyses <- function(Seurat_RObj_path="./data/Ali_Tcell_combined.
   
   ### normalize the read counts
   ### before the normalization, only keep the recall and random resting samples
-  input_data <- normalizeRNASEQwithVST(readCount = data.frame(Seurat_Obj@assays$RNA@counts[,c(recall_idx,
+  input_data <- normalizeRNASEQwithVST(readCount = data.frame(Seurat_Obj@assays$RNA@counts[,c(random_recall_idx,
                                                                                               random_resting_idx)],
                                                               stringsAsFactors = FALSE, check.names = FALSE))
   
@@ -669,8 +684,8 @@ tfh_additional_analyses <- function(Seurat_RObj_path="./data/Ali_Tcell_combined.
   
   ### annotate class for the input data
   input_data <- data.frame(t(input_data), stringsAsFactors = FALSE, check.names = FALSE)
-  input_data$Type <- factor(c(rep("Recall", length(recall_idx)),
-                              rep("Resting", length(recall_idx))), levels = c("Resting", "Recall"))
+  input_data$Type <- factor(c(rep("Recall", length(random_recall_idx)),
+                              rep("Resting", length(random_recall_idx))), levels = c("Resting", "Recall"))
   
   ### build classifier and test
   ### LOOCV
@@ -699,5 +714,78 @@ tfh_additional_analyses <- function(Seurat_RObj_path="./data/Ali_Tcell_combined.
              xlim = c(1,0), ylim = c(0,1), grid = TRUE, cex.main = 1)
   }
   dev.off()
+  
+  
+  ### in the "PCA_TFH_Cluster_17.png", pick cells with PC1 > 15 in d180
+  ### and see how they changed over time
+  ### also, which genes contribute a lot in the PC1? + pathway analysis
+  
+  ### new output directory for the results
+  outputDir2 <- paste0(outputDir, "Cluster17-TFH/Interesting_Clones/")
+  dir.create(outputDir2, showWarnings = FALSE, recursive = TRUE)
+  
+  ### get names of the cells of interest
+  interesting_cells <- rownames(subset_Seurat_Obj@reductions$pca@cell.embeddings)[intersect(which(subset_Seurat_Obj@meta.data$Day == "d180"),
+                                                                                            which(subset_Seurat_Obj@reductions$pca@cell.embeddings[,"PC_1"] > 15))]
+  
+  ### get clones of the cells
+  interesting_clones <- unique(subset_Seurat_Obj@meta.data[interesting_cells,"clone_id"])
+  
+  ### get all the indicies of the clones
+  all_interesting_clone_idx <- which(subset_Seurat_Obj@meta.data$clone_id %in% interesting_clones)
+  
+  ### make a table for lineage tracing
+  interesting_tp <- unique(subset_Seurat_Obj@meta.data$Day[all_interesting_clone_idx])
+  interesting_tp <- as.character(interesting_tp[order(interesting_tp)])
+  interesting_clone_table <- matrix(0, length(interesting_clones), length(interesting_tp))
+  rownames(interesting_clone_table) <- interesting_clones
+  colnames(interesting_clone_table) <- interesting_tp
+  
+  ### fill out the table
+  for(idx in all_interesting_clone_idx) {
+    interesting_clone_table[subset_Seurat_Obj@meta.data$clone_id[idx],
+                            as.character(subset_Seurat_Obj@meta.data$Day[idx])] <- interesting_clone_table[subset_Seurat_Obj@meta.data$clone_id[idx],
+                                                                                                           as.character(subset_Seurat_Obj@meta.data$Day[idx])] + 1
+  }
+  
+  ### save the table
+  write.xlsx2(data.frame(Clone_ID=rownames(interesting_clone_table), interesting_clone_table,
+                         stringsAsFactors = FALSE, check.names = FALSE),
+              file = paste0(outputDir2, "Interesting_Clones_Lineage_Tracing.xlsx"),
+              row.names = FALSE, sheetName = "Interesting_Clones")
+  
+  ### choose clones that were appeared in more than one time points
+  target_clones <- interesting_clones[apply(interesting_clone_table, 1, function(x) {
+    if(length(which(x > 0)) > 1) {
+      return(TRUE)
+    } else {
+      return(FALSE)
+    }
+  })]
+  
+  ### draw PCA plot to describe changes of the clones over time
+  p <- vector("list", length = length(target_clones))
+  names(p) <- target_clones
+  for(clone in target_clones) {
+    plot_df <- data.frame(PC1=subset_Seurat_Obj@reductions$pca@cell.embeddings[which(subset_Seurat_Obj@meta.data$clone_id == clone),"PC_1"],
+                          PC2=subset_Seurat_Obj@reductions$pca@cell.embeddings[which(subset_Seurat_Obj@meta.data$clone_id == clone),"PC_2"],
+                          Day=subset_Seurat_Obj@meta.data$Day[which(subset_Seurat_Obj@meta.data$clone_id == clone)],
+                          stringsAsFactors = FALSE, check.names = FALSE)
+    p[[clone]] <- ggplot(plot_df, aes_string(x="PC1", y="PC2")) +
+      geom_point(aes_string(col="Day"), size=2, alpha=0.8) +
+      ggtitle(clone) +
+      theme_classic(base_size = 16) +
+      theme(plot.title = element_text(hjust = 0.5))
+  }
+  g <- arrangeGrob(grobs = p,
+                   nrow = 2,
+                   ncol = 2,
+                   top = "Interesting-Clones Lineages")
+  ggsave(file = paste0(outputDir2, "Interesting_Clones_Lineage_Tracing.png"), g, width = 10, height = 6, dpi = 500)
+  
+  ### interesting clone PCA ALL
+  ### one PCA - all clones coloring with days
+  
+  
   
 }
