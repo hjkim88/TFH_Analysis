@@ -17,11 +17,11 @@
 #
 #   Example
 #               > source("The_directory_of_Clonal_Tracking.R/Clonal_Tracking.R")
-#               > clonal_tracking(Seurat_RObj_path="./data/Ali_Tcell_combined.RDATA",
+#               > clonal_tracking(Seurat_RObj_path="./data/Ali_Tcell_combined_NEW.RDATA",
 #                                 outputDir="./results/")
 ###
 
-clonal_tracking <- function(Seurat_RObj_path="./data/Ali_Tcell_combined.RDATA",
+clonal_tracking <- function(Seurat_RObj_path="./data/Ali_Tcell_combined_NEW.RDATA",
                             outputDir="./results/") {
   
   ### load libraries
@@ -255,46 +255,33 @@ clonal_tracking <- function(Seurat_RObj_path="./data/Ali_Tcell_combined.RDATA",
   ### Alluvial plot - visualization of the lineage tracing (PB-associated lineages only)
   
   ### get an input data frame for the alluvial plot
-  lnpb_only_idx <- which(lineage_table_PB$cell_type != "ALL")
-  total_rows <- length(which(lineage_table_PB[lnpb_only_idx,time_points] > 0))
-  plot_df <- data.frame(Tissue=rep("", total_rows),
-                        Time=rep("", total_rows),
-                        Clone_Size=rep(0, total_rows),
-                        Clone=rep("", total_rows),
-                        CDR3=rep("", total_rows))
-  cnt <- 1
-  for(i in lnpb_only_idx) {
-    for(tp in time_points) {
-      if(lineage_table_PB[i,tp] > 0) {
-        plot_df[cnt,] <- c(lineage_table_PB$cell_type[i],
-                           tp,
-                           lineage_table_PB[i,tp],
-                           lineage_table_PB$clone_id[i],
-                           lineage_table_PB$cdr_ab[i])
-        cnt <- cnt + 1
-      }
+  plot_df <- plot_df[which(plot_df$Clone %in% unique(lineage_table_PB$clone_id)),]
+  
+  ### add the number of PB cells
+  plot_df$PB_Num <- ""
+  for(i in 1:nrow(plot_df)) {
+    num <- lineage_table_PB[paste0(plot_df$Clone[i], "_PB"),as.character(plot_df$Time[i])]
+    if(num > 0) {
+      plot_df$PB_Num[i] <- num
     }
   }
-  plot_df$Time <- factor(plot_df$Time, levels = time_points)
-  
-  ### numerize the clone_size column
-  plot_df$Clone_Size <- as.numeric(plot_df$Clone_Size)
   
   ### draw the alluvial plot
   ggplot(plot_df,
          aes(x = Time, stratum = Clone, alluvium = Clone,
              y = Clone_Size,
-             fill = CDR3, label = CDR3)) +
+             fill = CDR3, label = PB_Num)) +
     ggtitle("Clonal Tracing of the TFH-related Cells (PB-Associated Lineages)") +
     geom_stratum(alpha = 1) +
+    geom_text(stat = "stratum", size = 3, col = "black") +
     geom_flow() +
     rotate_x_text(90) +
-    theme_pubr(legend = "right") +
+    theme_pubr(legend = "none") +
     theme(axis.title.x = element_blank()) +
     theme_cleveland2() +
-    scale_fill_jco(name="CDR3 (TCRa:TCRb)") +
+    scale_fill_viridis(discrete = T) +
     scale_y_continuous(expand = c(0, 0), limits = c(0, NA))
-  ggsave(file = paste0(outputDir, "TFH_Cluster_17_Clonal_Tracing.png"), width = 18, height = 9, dpi = 300)
+  ggsave(file = paste0(outputDir, "TFH_Cluster_17_Clonal_Tracing_PB.png"), width = 18, height = 9, dpi = 300)
   
   
   #
