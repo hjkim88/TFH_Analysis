@@ -30,6 +30,7 @@ tfh_additional_analyses <- function(Seurat_RObj_path="./data/Ali_Tcell_combined_
     install.packages("Seurat")
     require(Seurat, quietly = TRUE)
   }
+  options(java.parameters = "-Xmx10240m")
   if(!require(xlsx, quietly = TRUE)) {
     install.packages("xlsx")
     require(xlsx, quietly = TRUE)
@@ -41,6 +42,22 @@ tfh_additional_analyses <- function(Seurat_RObj_path="./data/Ali_Tcell_combined_
   if(!require(gridExtra, quietly = TRUE)) {
     install.packages("gridExtra")
     require(gridExtra, quietly = TRUE)
+  }
+  if(!require(ggalluvial, quietly = TRUE)) {
+    install.packages("ggalluvial")
+    require(ggalluvial, quietly = TRUE)
+  }
+  if(!require(ggpubr, quietly = TRUE)) {
+    install.packages("ggpubr")
+    require(ggpubr, quietly = TRUE)
+  }
+  if(!require(viridis, quietly = TRUE)) {
+    install.packages("viridis")
+    require(viridis, quietly = TRUE)
+  }
+  if(!require(ggsci, quietly = TRUE)) {
+    install.packages("ggsci")
+    require(ggsci, quietly = TRUE)
   }
   if(!require(org.Hs.eg.db, quietly = TRUE)) {
     if (!requireNamespace("BiocManager", quietly = TRUE))
@@ -785,7 +802,552 @@ tfh_additional_analyses <- function(Seurat_RObj_path="./data/Ali_Tcell_combined_
   
   ### interesting clone PCA ALL
   ### one PCA - all clones coloring with days
+  plot_df <- data.frame(PC1=subset_Seurat_Obj@reductions$pca@cell.embeddings[all_interesting_clone_idx,"PC_1"],
+                        PC2=subset_Seurat_Obj@reductions$pca@cell.embeddings[all_interesting_clone_idx,"PC_2"],
+                        Day=subset_Seurat_Obj@meta.data$Day[all_interesting_clone_idx],
+                        Clone=subset_Seurat_Obj@meta.data$clone_id[all_interesting_clone_idx],
+                        stringsAsFactors = FALSE, check.names = FALSE)
+  plot_df$Clone[which(!(plot_df$Clone %in% target_clones))] <- "unique_clones"
+  ggplot(plot_df, aes_string(x="PC1", y="PC2")) +
+    geom_point(aes_string(col="Day", shape="Clone"), size=2, alpha=1) +
+    ggtitle("All_Interesting_Clones") +
+    theme_classic(base_size = 16) +
+    theme(plot.title = element_text(hjust = 0.5))
+  ggsave(file = paste0(outputDir2, "All_Interesting_Clones_Over_Time.png"), width = 7, height = 4, dpi = 500)
+  
+  ### find feature contributions of the PC1 
+  pca_cos2 <- subset_Seurat_Obj@reductions$pca@feature.loadings * subset_Seurat_Obj@reductions$pca@feature.loadings
+  pca_contb <- pca_cos2
+  for(i in 1:ncol(pca_contb)) {
+    s <- sum(pca_cos2[,i])
+    for(j in 1:nrow(pca_contb)) {
+      pca_contb[j,i] <- pca_cos2[j,i] * 100 / s
+    }
+  }
+  pca_contb <- pca_contb[order(-pca_contb[,"PC_1"]),]
+  write.xlsx2(data.frame(Gene=rownames(pca_contb), pca_contb,
+                         stringsAsFactors = FALSE, check.names = FALSE),
+              file = paste0(outputDir2, "PCA_Contributions.xlsx"),
+              row.names = FALSE, sheetName = "PCA_Contributions")
+  
+  ### pathway analysis with the important genes of the PC1
+  contb_threshold <- 0.1
+  important_genes <- rownames(pca_contb)[which(pca_contb[,"PC_1"] > contb_threshold)]
+  pathway_result_GO <- pathwayAnalysis_CP(geneList = mapIds(org.Hs.eg.db,
+                                                            important_genes,
+                                                            "ENTREZID", "SYMBOL"),
+                                          org = "human", database = "GO",
+                                          title = paste0("Pathway_Results_", length(important_genes), "_PC1_Genes_", contb_threshold),
+                                          displayNum = 50, imgPrint = TRUE,
+                                          dir = paste0(outputDir2))
+  pathway_result_KEGG <- pathwayAnalysis_CP(geneList = mapIds(org.Hs.eg.db,
+                                                              important_genes,
+                                                              "ENTREZID", "SYMBOL"),
+                                            org = "human", database = "KEGG",
+                                            title = paste0("Pathway_Results_", length(important_genes), "_PC1_Genes_", contb_threshold),
+                                            displayNum = 50, imgPrint = TRUE,
+                                            dir = paste0(outputDir2))
+  write.xlsx2(pathway_result_GO, file = paste0(outputDir2, "GO_pathway_results_", length(important_genes), "_PC1_Genes_", contb_threshold, ".xlsx"),
+              row.names = FALSE, sheetName = paste0("GO_Results"))
+  write.xlsx2(pathway_result_KEGG, file = paste0(outputDir2, "KEGG_pathway_results_", length(important_genes), "_PC1_Genes_", contb_threshold, ".xlsx"),
+              row.names = FALSE, sheetName = paste0("KEGG_Results"))
+  
+  #
+  ### same analysis with matched_SC and matched_bulk only with "yes"
+  #
+  
+  ### new output directory for the results
+  outputDir2 <- paste0(outputDir, "bulk_and_scTCR(PCR)/")
+  dir.create(outputDir2, showWarnings = FALSE, recursive = TRUE)
+  
+  ### get "yes" indicies
+  matched_indicies <- union(union(which(Seurat_Obj@meta.data$matched_SC_alpha_only == "yes"),
+                                  which(Seurat_Obj@meta.data$matched_SC_beta_only == "yes")),
+                            union(which(Seurat_Obj@meta.data$matched_bulk_alpha == "yes"),
+                                  which(Seurat_Obj@meta.data$matched_bulk_beta == "yes")))
+  
+  ### see UMAP of the "yes" cells
+  plot_df <- data.frame(UMAP1=Seurat_Obj@reductions$umap@cell.embeddings[,"UMAP_1"],
+                        UMAP2=Seurat_Obj@reductions$umap@cell.embeddings[,"UMAP_2"],
+                        Day=Seurat_Obj@meta.data$Day,
+                        Clone=Seurat_Obj@meta.data$clone_id,
+                        Cluster17=ifelse(Seurat_Obj@meta.data$clone_id %in% cluster_17_clone_ids, "yes", "no"),
+                        Matched=ifelse(1:nrow(Seurat_Obj@meta.data) %in% matched_indicies, "yes", "no"),
+                        stringsAsFactors = FALSE, check.names = FALSE)
+  p <- list()
+  p[[1]] <- ggplot(plot_df, aes_string(x="UMAP1", y="UMAP2")) +
+    geom_point(aes_string(col="Cluster17"), size=1, alpha=1) +
+    ggtitle("Cluster17 Clones") +
+    theme_classic(base_size = 16) +
+    theme(plot.title = element_text(hjust = 0.5))
+  p[[2]] <- ggplot(plot_df, aes_string(x="UMAP1", y="UMAP2")) +
+    geom_point(aes_string(col="Matched"), size=1, alpha=1) +
+    ggtitle("Bulk TCR and scTCR(PCR) Clones") +
+    theme_classic(base_size = 16) +
+    theme(plot.title = element_text(hjust = 0.5))
+  g <- arrangeGrob(grobs = p,
+                   nrow = 1,
+                   ncol = 2,
+                   top = "Cluster17 vs bulk_and_scTCR(PCR)")
+  ggsave(file = paste0(outputDir2, "UMAP_comparison.png"), g, width = 14, height = 6, dpi = 200)
+  
+  ### start to perform the same analysis as for the cluster 17
+  
+  ### get a subset for the bulk_and_scTCR(PCR)
+  new.ident <- rep(NA, nrow(Seurat_Obj@meta.data))
+  new.ident[matched_indicies] <- "matched"
+  Idents(object = Seurat_Obj) <- new.ident
+  subset_Seurat_Obj <- subset(Seurat_Obj, idents=c("matched"))
+  
+  ### factorize the Day column
+  subset_Seurat_Obj@meta.data$Day <- factor(subset_Seurat_Obj@meta.data$Day,
+                                            levels = c("d0", "d5", "d12", "d28", "d60", "d90", "d120", "d180"))
+  
+  ### run PCA
+  subset_Seurat_Obj <- RunPCA(subset_Seurat_Obj, npcs = 10)
+  
+  ### PCA plot
+  g <- multiReducPlot(x = subset_Seurat_Obj@reductions$pca@cell.embeddings[,"PC_1"],
+                      y = subset_Seurat_Obj@reductions$pca@cell.embeddings[,"PC_2"],
+                      group = subset_Seurat_Obj@meta.data$Day, type = "PCA",
+                      fName = "PCA_bulk_and_scTCR(PCR)", isPrint = TRUE, isConvex = TRUE)
+  ggsave(file = paste0(outputDir2, "PCA_bulk_and_scTCR(PCR).png"), g, width = 20, height = 10, dpi = 300)
+  
+  ### run UMAP
+  subset_Seurat_Obj <- RunUMAP(subset_Seurat_Obj, dims = 1:5)
+  
+  ### UMAP plot
+  g <- multiReducPlot(x = subset_Seurat_Obj@reductions$umap@cell.embeddings[,"UMAP_1"],
+                      y = subset_Seurat_Obj@reductions$umap@cell.embeddings[,"UMAP_2"],
+                      group = subset_Seurat_Obj@meta.data$Day, type = "UMAP",
+                      fName = "UMAP_bulk_and_scTCR(PCR)", isPrint = TRUE, isConvex = TRUE)
+  ggsave(file = paste0(outputDir2, "UMAP_bulk_and_scTCR(PCR).png"), g, width = 20, height = 10, dpi = 300)
   
   
+  ### make a clone summary table
+  ### here I checked same match.cdr always has the same clone_id
+  unique_clone_idx <- which(!duplicated(subset_Seurat_Obj@meta.data$clone_id))
+  clone_summary_table <- data.frame(clone_id=subset_Seurat_Obj@meta.data$clone_id[unique_clone_idx],
+                                    cdr_ab=subset_Seurat_Obj@meta.data$match.cdr[unique_clone_idx])
+  rownames(clone_summary_table) <- clone_summary_table$clone_id
+  
+  ### add time point counts and the total count of the clonotypes
+  time_points <- c("d0", "d5", "d12", "d28", "d60", "d90", "d120", "d180")
+  clone_summary_table[time_points] <- 0
+  clone_summary_table$total_count <- 0
+  
+  ### fill out the counts
+  tp_indicies <- lapply(time_points, function(x) which(subset_Seurat_Obj@meta.data$Day == x))
+  names(tp_indicies) <- time_points
+  for(clone in rownames(clone_summary_table)) {
+    clone_idx <- which(subset_Seurat_Obj@meta.data$clone_id == clone)
+    for(tp in time_points) {
+      clone_summary_table[clone,tp] <- length(intersect(clone_idx, tp_indicies[[tp]]))
+    }
+  }
+  clone_summary_table$total_count <- as.numeric(apply(clone_summary_table[,time_points], 1, sum))
+  
+  ### order by the total_count
+  clone_summary_table <- clone_summary_table[order(-clone_summary_table$total_count),]
+  
+  ### save the table as Excel file
+  write.xlsx2(clone_summary_table, file = paste0(outputDir2, "Clone_Count_Summary.xlsx"),
+              sheetName = "CLONE_SUMMARY", row.names = FALSE)
+  
+  ### Alluvial plot - visualization of the lineage tracing
+  
+  ### only keep lineages from the clone_summary_table
+  ### * lineage = a clone that appears in more than one (2, 3, ...) time points
+  lineage_table <- clone_summary_table[apply(clone_summary_table[,time_points], 1, function(x) {
+    return(length(which(x > 0)) > 1)
+  }),]
+  
+  ### get an input data frame for the alluvial plot
+  total_rows <- length(which(lineage_table[,time_points] > 0))
+  plot_df <- data.frame(Time=rep("", total_rows),
+                        Clone_Size=rep(0, total_rows),
+                        Clone=rep("", total_rows),
+                        CDR3=rep("", total_rows))
+  cnt <- 1
+  for(i in 1:nrow(lineage_table)) {
+    for(tp in time_points) {
+      if(lineage_table[i,tp] > 0) {
+        plot_df[cnt,] <- c(tp,
+                           lineage_table[i,tp],
+                           lineage_table$clone_id[i],
+                           lineage_table$cdr_ab[i])
+        cnt <- cnt + 1
+      }
+    }
+  }
+  plot_df$Time <- factor(plot_df$Time, levels = time_points)
+  
+  ### numerize the clone_size column
+  plot_df$Clone_Size <- as.numeric(plot_df$Clone_Size)
+  
+  ### theme that draws dotted lines for each y-axis ticks
+  ### this function is from "immunarch" package
+  theme_cleveland2 <- function(rotate = TRUE) {
+    if (rotate) {
+      theme(
+        panel.grid.major.x = element_blank(), panel.grid.minor.x = element_blank(),
+        panel.grid.major.y = element_line(
+          colour = "grey70",
+          linetype = "dashed"
+        )
+      )
+    }
+    else {
+      theme(
+        panel.grid.major.x = element_line(
+          colour = "grey70",
+          linetype = "dashed"
+        ), panel.grid.major.y = element_blank(),
+        panel.grid.minor.y = element_blank()
+      )
+    }
+  }
+  
+  ### draw the alluvial plot
+  ggplot(plot_df,
+         aes(x = Time, stratum = Clone, alluvium = Clone,
+             y = Clone_Size,
+             fill = Clone, label = CDR3)) +
+    ggtitle("Clonal Tracing of the bulk_and_scTCR(PCR) Matched Cells") +
+    geom_flow() +
+    geom_stratum(alpha = 1) +
+    geom_text(stat = "stratum", size = 0.8) +
+    rotate_x_text(90) +
+    theme_pubr(legend = "none") +
+    theme(axis.title.x = element_blank()) +
+    theme_cleveland2() +
+    scale_fill_viridis(discrete = T) +
+    scale_y_continuous(expand = c(0, 0), limits = c(0, NA))
+  ggsave(file = paste0(outputDir2, "bulk_and_scTCR(PCR)_Clonal_Tracing.png"), width = 18, height = 9, dpi = 300)
+  
+  
+  ### separate the LN and PB cells
+  clone_summary_table_LNPB <- data.frame(sapply(clone_summary_table, function(x) c(rbind(x, x, x))),
+                                         stringsAsFactors = FALSE, check.names = FALSE)
+  clone_summary_table_LNPB <- data.frame(clone_summary_table_LNPB[,c("clone_id", "cdr_ab")],
+                                         cell_type=rep(c("LN", "PB", "ALL"), nrow(clone_summary_table)),
+                                         sapply(clone_summary_table_LNPB[,c(time_points, "total_count")],
+                                                as.numeric),
+                                         stringsAsFactors = FALSE, check.names = FALSE)
+  rownames(clone_summary_table_LNPB) <- paste(c(rbind(rownames(clone_summary_table),
+                                                      rownames(clone_summary_table),
+                                                      rownames(clone_summary_table))),
+                                              c("LN", "PB", "ALL"), sep = "_")
+  
+  ### fill out the new table
+  for(i in 1:nrow(clone_summary_table_LNPB)) {
+    if(clone_summary_table_LNPB$cell_type[i] != "ALL") {
+      clone_idx <- intersect(which(subset_Seurat_Obj@meta.data$clone_id == clone_summary_table_LNPB$clone_id[i]),
+                             which(subset_Seurat_Obj@meta.data$Tissue == clone_summary_table_LNPB$cell_type[i]))
+      for(tp in time_points) {
+        clone_summary_table_LNPB[i,tp] <- length(intersect(clone_idx, tp_indicies[[tp]]))
+      }
+      clone_summary_table_LNPB$total_count[i] <- sum(clone_summary_table_LNPB[i,time_points])
+    }
+  }
+  
+  ### pb-associated table
+  ### there are only 12 PB cells in this subset
+  pb_idx <- intersect(which(clone_summary_table_LNPB$cell_type == "PB"),
+                      which(clone_summary_table_LNPB$total_count > 0))
+  clone_summary_table_PB <- clone_summary_table_LNPB[c(rbind(pb_idx-1,
+                                                             pb_idx,
+                                                             pb_idx+1)),]
+  
+  ### only keep lineages from the pb-associated table
+  line_idx <- intersect(which(clone_summary_table_PB$total_count > 1),
+                        which(clone_summary_table_PB$cell_type == "ALL"))
+  lineage_table_PB <- clone_summary_table_PB[c(rbind(line_idx-2,
+                                                     line_idx-1,
+                                                     line_idx)),]
+  
+  ### save it in Excel file
+  write.xlsx2(lineage_table_PB, file = paste0(outputDir2, "PB_Associated_Lineages.xlsx"),
+              sheetName = "PB_Lineages", row.names = FALSE)
+  
+  ### get the number of cells for each group
+  ln_cellNum_subset <- sapply(time_points, function(x) {
+    return(length(intersect(which(subset_Seurat_Obj@meta.data$Tissue == "LN"),
+                            which(subset_Seurat_Obj@meta.data$Day == x))))
+  })
+  pb_cellNum_subset <- sapply(time_points, function(x) {
+    return(length(intersect(which(subset_Seurat_Obj@meta.data$Tissue == "PB"),
+                            which(subset_Seurat_Obj@meta.data$Day == x))))
+  })
+  ln_cellNum_all <- sapply(time_points, function(x) {
+    return(length(intersect(intersect(which(Seurat_Obj@meta.data$Tissue == "LN"),
+                                      which(Seurat_Obj@meta.data$Day == x)),
+                            which(!is.na(Seurat_Obj@meta.data$match.cdr)))))
+  })
+  pb_cellNum_all <- sapply(time_points, function(x) {
+    return(length(intersect(intersect(which(Seurat_Obj@meta.data$Tissue == "PB"),
+                                      which(Seurat_Obj@meta.data$Day == x)),
+                            which(!is.na(Seurat_Obj@meta.data$match.cdr)))))
+  })
+  
+  ### Alluvial plot - visualization of the lineage tracing (PB-associated lineages only)
+  
+  ### get an input data frame for the alluvial plot
+  plot_df <- plot_df[which(plot_df$Clone %in% unique(lineage_table_PB$clone_id)),]
+  
+  ### add the number of PB cells
+  plot_df$PB_Num <- ""
+  for(i in 1:nrow(plot_df)) {
+    num <- lineage_table_PB[paste0(plot_df$Clone[i], "_PB"),as.character(plot_df$Time[i])]
+    if(num > 0) {
+      plot_df$PB_Num[i] <- num
+    }
+  }
+  
+  ### draw the alluvial plot
+  ggplot(plot_df,
+         aes(x = Time, stratum = Clone, alluvium = Clone,
+             y = Clone_Size,
+             fill = CDR3, label = PB_Num)) +
+    ggtitle("Clonal Tracing of the bulk_and_scTCR(PCR) Matched Cells (PB-Associated Lineages)") +
+    geom_stratum(alpha = 1) +
+    geom_text(stat = "stratum", size = 3, col = "black") +
+    geom_flow() +
+    rotate_x_text(90) +
+    theme_pubr(legend = "none") +
+    theme(axis.title.x = element_blank()) +
+    theme_cleveland2() +
+    scale_fill_viridis(discrete = T) +
+    scale_y_continuous(expand = c(0, 0), limits = c(0, NA))
+  ggsave(file = paste0(outputDir2, "bulk_and_scTCR(PCR)_Clonal_Tracing_PB.png"), width = 18, height = 9, dpi = 300)
+  
+  
+  #
+  ### PCA & UMAP with the top 9 clones from the bulk_and_scTCR(PCR) result
+  #
+  
+  ### subset preparation for the PCA & UMAP
+  Idents(object = Seurat_Obj) <- Seurat_Obj@meta.data$clone_id
+  subset_Seurat_Obj2 <- subset(Seurat_Obj, idents=lineage_table$clone_id[1:9])
+  subset_Seurat_Obj2@meta.data$Day <- factor(subset_Seurat_Obj2@meta.data$Day,
+                                            levels = c("d0", "d5", "d12", "d28", "d60", "d90", "d120", "d180"))
+  
+  ### draw the PCA & UMAP
+  DimPlot(subset_Seurat_Obj2, reduction = "pca", split.by = "clone_id", group.by = "Day",
+          ncol = 3, pt.size = 2) +
+    labs(title = "PCA of the Top 9 Clones")
+  ggsave(file = paste0(outputDir2, "PCA_Top_9_Clones_bulk_and_scTCR(PCR).png"), width = 20, height = 10, dpi = 300)
+  DimPlot(subset_Seurat_Obj2, reduction = "umap", split.by = "clone_id", group.by = "Day",
+          ncol = 3, pt.size = 2) +
+    labs(title = "UMAP of the Top 9 Clones")
+  ggsave(file = paste0(outputDir2, "UMAP_Top_9_Clones_bulk_and_scTCR(PCR).png"), width = 20, height = 10, dpi = 300)
+  
+  
+  #
+  ### Markers associated with the interesting clones in the bulk_and_scTCR(PCR) matched cells
+  #
+  
+  ### set clone size threshold
+  ### clones with clone size > clone size threshold will be used
+  clone_size_thresh <- 5
+  
+  ### DE gene FDR threshold
+  de_signif_thresh <- 0.05
+  
+  ### get clone names that will be used
+  clone_names <- clone_summary_table$clone_id[which(clone_summary_table$total_count > clone_size_thresh)]
+  
+  ### set new output directory
+  outputDir3 <- paste0(outputDir2, "Clone_Markers/")
+  dir.create(path = outputDir3, showWarnings = FALSE, recursive = TRUE)
+  
+  ### for each interesting clone perform marker discovery
+  for(clone in clone_names) {
+    
+    ### print progress
+    writeLines(paste(clone))
+    
+    ### set new output directory
+    outputDir4 <- paste0(outputDir3, clone, "/")
+    dir.create(path = outputDir4, showWarnings = FALSE, recursive = TRUE)
+    
+    ### Ident configure
+    new.ident <- rep(NA, nrow(Seurat_Obj@meta.data))
+    new.ident[intersect(matched_indicies,
+                        which(Seurat_Obj@meta.data$clone_id == clone))] <- "ident1"
+    new.ident[setdiff(matched_indicies,
+                      which(Seurat_Obj@meta.data$clone_id == clone))] <- "ident2"
+    Idents(object = Seurat_Obj) <- new.ident
+    
+    ### DE analysis with DESeq2
+    de_result <- FindMarkers(Seurat_Obj,
+                             ident.1 = "ident1",
+                             ident.2 = "ident2",
+                             logfc.threshold = 0,
+                             min.pct = 0.1,
+                             test.use = "DESeq2")
+    
+    ### rearange the columns
+    de_result <- data.frame(Gene_Symbol=rownames(de_result),
+                            de_result[,-which(colnames(de_result) == "p_val_adj")],
+                            FDR=p.adjust(de_result$p_val, method = "BH"),
+                            stringsAsFactors = FALSE, check.names = FALSE)
+    
+    ### save in Excel
+    write.xlsx2(de_result, file = paste0(outputDir4, "DESeq2_", clone, "_vs_others.xlsx"),
+                sheetName = paste0(clone, "_vs_others"), row.names = FALSE)
+    
+    ### pathway analysis
+    if(length(which(de_result$FDR < de_signif_thresh)) > 0) {
+      pathway_result_GO <- pathwayAnalysis_CP(geneList = mapIds(org.Hs.eg.db,
+                                                                de_result[which(de_result$FDR < de_signif_thresh),
+                                                                          "Gene_Symbol"],
+                                                                "ENTREZID", "SYMBOL"),
+                                              org = "human", database = "GO",
+                                              title = paste0("Pathway_Results_", clone, "_vs_others"),
+                                              displayNum = 50, imgPrint = TRUE,
+                                              dir = paste0(outputDir4))
+      pathway_result_KEGG <- pathwayAnalysis_CP(geneList = mapIds(org.Hs.eg.db,
+                                                                  de_result[which(de_result$FDR < de_signif_thresh),
+                                                                            "Gene_Symbol"],
+                                                                  "ENTREZID", "SYMBOL"),
+                                                org = "human", database = "KEGG",
+                                                title = paste0("Pathway_Results_", clone, "_vs_others"),
+                                                displayNum = 50, imgPrint = TRUE,
+                                                dir = paste0(outputDir4))
+      if(!is.null(pathway_result_GO) && nrow(pathway_result_GO) > 0) {
+        write.xlsx2(pathway_result_GO, file = paste0(outputDir4, "GO_pathway_results_", clone, "_vs_others.xlsx"),
+                    row.names = FALSE, sheetName = paste0("GO_Results_", clone, "_vs_others"))
+      }
+      if(!is.null(pathway_result_KEGG) && nrow(pathway_result_KEGG) > 0) {
+        write.xlsx2(pathway_result_KEGG, file = paste0(outputDir4, "KEGG_pathway_results_", clone, "_vs_others.xlsx"),
+                    row.names = FALSE, sheetName = paste0("KEGG_Results_", clone, "_vs_others"))
+      }
+    }
+    
+  }
+  
+  
+  ### in the "PCA_bulk_and_scTCR(PCR).png", pick cells with PC1 > 5 in d180
+  ### and see how they changed over time
+  ### also, which genes contribute a lot in the PC1? + pathway analysis
+  
+  ### new output directory for the results
+  outputDir3 <- paste0(outputDir2, "Interesting_Clones/")
+  dir.create(outputDir3, showWarnings = FALSE, recursive = TRUE)
+  
+  ### get names of the cells of interest
+  interesting_cells <- rownames(subset_Seurat_Obj@reductions$pca@cell.embeddings)[intersect(which(subset_Seurat_Obj@meta.data$Day == "d180"),
+                                                                                            which(subset_Seurat_Obj@reductions$pca@cell.embeddings[,"PC_1"] > 5))]
+  
+  ### get clones of the cells
+  interesting_clones <- unique(subset_Seurat_Obj@meta.data[interesting_cells,"clone_id"])
+  
+  ### get all the indicies of the clones
+  all_interesting_clone_idx <- which(subset_Seurat_Obj@meta.data$clone_id %in% interesting_clones)
+  
+  ### make a table for lineage tracing
+  interesting_tp <- unique(subset_Seurat_Obj@meta.data$Day[all_interesting_clone_idx])
+  interesting_tp <- as.character(interesting_tp[order(interesting_tp)])
+  interesting_clone_table <- matrix(0, length(interesting_clones), length(interesting_tp))
+  rownames(interesting_clone_table) <- interesting_clones
+  colnames(interesting_clone_table) <- interesting_tp
+  
+  ### fill out the table
+  for(idx in all_interesting_clone_idx) {
+    interesting_clone_table[subset_Seurat_Obj@meta.data$clone_id[idx],
+                            as.character(subset_Seurat_Obj@meta.data$Day[idx])] <- interesting_clone_table[subset_Seurat_Obj@meta.data$clone_id[idx],
+                                                                                                           as.character(subset_Seurat_Obj@meta.data$Day[idx])] + 1
+  }
+  
+  ### save the table
+  write.xlsx2(data.frame(Clone_ID=rownames(interesting_clone_table), interesting_clone_table,
+                         stringsAsFactors = FALSE, check.names = FALSE),
+              file = paste0(outputDir3, "Interesting_Clones_Lineage_Tracing.xlsx"),
+              row.names = FALSE, sheetName = "Interesting_Clones")
+  
+  ### choose clones that were appeared in more than one time points
+  target_clones <- interesting_clones[apply(interesting_clone_table, 1, function(x) {
+    if(length(which(x > 0)) > 1) {
+      return(TRUE)
+    } else {
+      return(FALSE)
+    }
+  })]
+  
+  ### draw PCA plot to describe changes of the clones over time
+  p <- vector("list", length = length(target_clones))
+  names(p) <- target_clones
+  for(clone in target_clones) {
+    plot_df <- data.frame(PC1=subset_Seurat_Obj@reductions$pca@cell.embeddings[which(subset_Seurat_Obj@meta.data$clone_id == clone),"PC_1"],
+                          PC2=subset_Seurat_Obj@reductions$pca@cell.embeddings[which(subset_Seurat_Obj@meta.data$clone_id == clone),"PC_2"],
+                          Day=subset_Seurat_Obj@meta.data$Day[which(subset_Seurat_Obj@meta.data$clone_id == clone)],
+                          stringsAsFactors = FALSE, check.names = FALSE)
+    p[[clone]] <- ggplot(plot_df, aes_string(x="PC1", y="PC2")) +
+      geom_point(aes_string(col="Day"), size=2, alpha=0.8) +
+      ggtitle(clone) +
+      theme_classic(base_size = 16) +
+      theme(plot.title = element_text(hjust = 0.5))
+  }
+  g <- arrangeGrob(grobs = p,
+                   nrow = 3,
+                   ncol = 3,
+                   top = "Interesting-Clones Lineages")
+  ggsave(file = paste0(outputDir3, "Interesting_Clones_Lineage_Tracing.png"), g, width = 10, height = 6, dpi = 500)
+  
+  ### interesting clone PCA ALL
+  ### one PCA - all clones coloring with days
+  plot_df <- data.frame(PC1=subset_Seurat_Obj@reductions$pca@cell.embeddings[all_interesting_clone_idx,"PC_1"],
+                        PC2=subset_Seurat_Obj@reductions$pca@cell.embeddings[all_interesting_clone_idx,"PC_2"],
+                        Day=subset_Seurat_Obj@meta.data$Day[all_interesting_clone_idx],
+                        Clone=subset_Seurat_Obj@meta.data$clone_id[all_interesting_clone_idx],
+                        stringsAsFactors = FALSE, check.names = FALSE)
+  plot_df$Clone[which(!(plot_df$Clone %in% target_clones))] <- "unique_clones"
+  plot_df$Clone <- factor(plot_df$Clone)
+  ggplot(plot_df, aes_string(x="PC1", y="PC2")) +
+    geom_point(aes_string(col="Day", shape="Clone"), size=2, alpha=1) +
+    scale_shape_manual(values=1:nlevels(plot_df$Clone)) +
+    ggtitle("All_Interesting_Clones") +
+    theme_classic(base_size = 16) +
+    theme(plot.title = element_text(hjust = 0.5))
+  ggsave(file = paste0(outputDir3, "All_Interesting_Clones_Over_Time.png"), width = 10, height = 6, dpi = 500)
+  
+  
+  ### find feature contributions of the PC1 
+  pca_cos2 <- subset_Seurat_Obj@reductions$pca@feature.loadings * subset_Seurat_Obj@reductions$pca@feature.loadings
+  pca_contb <- pca_cos2
+  for(i in 1:ncol(pca_contb)) {
+    s <- sum(pca_cos2[,i])
+    for(j in 1:nrow(pca_contb)) {
+      pca_contb[j,i] <- pca_cos2[j,i] * 100 / s
+    }
+  }
+  pca_contb <- pca_contb[order(-pca_contb[,"PC_1"]),]
+  write.xlsx2(data.frame(Gene=rownames(pca_contb), pca_contb,
+                         stringsAsFactors = FALSE, check.names = FALSE),
+              file = paste0(outputDir3, "PCA_Contributions.xlsx"),
+              row.names = FALSE, sheetName = "PCA_Contributions")
+  
+  ### pathway analysis with the important genes of the PC1
+  contb_threshold <- 0.1
+  important_genes <- rownames(pca_contb)[which(pca_contb[,"PC_1"] > contb_threshold)]
+  pathway_result_GO <- pathwayAnalysis_CP(geneList = mapIds(org.Hs.eg.db,
+                                                            important_genes,
+                                                            "ENTREZID", "SYMBOL"),
+                                          org = "human", database = "GO",
+                                          title = paste0("Pathway_Results_", length(important_genes), "_PC1_Genes_", contb_threshold),
+                                          displayNum = 50, imgPrint = TRUE,
+                                          dir = paste0(outputDir3))
+  pathway_result_KEGG <- pathwayAnalysis_CP(geneList = mapIds(org.Hs.eg.db,
+                                                              important_genes,
+                                                              "ENTREZID", "SYMBOL"),
+                                            org = "human", database = "KEGG",
+                                            title = paste0("Pathway_Results_", length(important_genes), "_PC1_Genes_", contb_threshold),
+                                            displayNum = 50, imgPrint = TRUE,
+                                            dir = paste0(outputDir3))
+  write.xlsx2(pathway_result_GO, file = paste0(outputDir3, "GO_pathway_results_", length(important_genes), "_PC1_Genes_", contb_threshold, ".xlsx"),
+              row.names = FALSE, sheetName = paste0("GO_Results"))
+  write.xlsx2(pathway_result_KEGG, file = paste0(outputDir3, "KEGG_pathway_results_", length(important_genes), "_PC1_Genes_", contb_threshold, ".xlsx"),
+              row.names = FALSE, sheetName = paste0("KEGG_Results"))
   
 }
