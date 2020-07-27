@@ -47,9 +47,9 @@ tfh_additional_analyses2 <- function(Seurat_RObj_path="./data/Ali_Tcell_combined
     install.packages("ggpubr")
     require(ggpubr, quietly = TRUE)
   }
-  if(!require(viridis, quietly = TRUE)) {
-    install.packages("viridis")
-    require(viridis, quietly = TRUE)
+  if(!require(RColorBrewer, quietly = TRUE)) {
+    install.packages("RColorBrewer")
+    require(RColorBrewer, quietly = TRUE)
   }
   if(!require(ggsci, quietly = TRUE)) {
     install.packages("ggsci")
@@ -73,6 +73,9 @@ tfh_additional_analyses2 <- function(Seurat_RObj_path="./data/Ali_Tcell_combined
   assign("Seurat_Obj", get(obj_name, envir = tmp_env))
   rm(tmp_env)
   gc()
+  
+  ### rownames in the meta.data should be in the same order as colnames in the counts
+  Seurat_Obj@meta.data <- Seurat_Obj@meta.data[colnames(Seurat_Obj@assays$RNA@counts),]
   
   ###
   #   This function was downloaded from: https://raw.githubusercontent.com/obigriffith/biostar-tutorials/master/Heatmaps/heatmap.3.R
@@ -527,9 +530,6 @@ tfh_additional_analyses2 <- function(Seurat_RObj_path="./data/Ali_Tcell_combined
     invisible(retval)
   }
   
-  ### rownames in the meta.data should be in the same order as colnames in the counts
-  Seurat_Obj@meta.data <- Seurat_Obj@meta.data[colnames(Seurat_Obj@assays$RNA@counts),]
-  
   ### get unique clone ids in the cluster 17
   cluster_17_clone_ids <- unique(Seurat_Obj@meta.data$clone_id[which(Seurat_Obj@meta.data$seurat_clusters == "17")])
   cluster_17_clone_ids <- cluster_17_clone_ids[intersect(intersect(which(!is.na(cluster_17_clone_ids)),
@@ -549,6 +549,12 @@ tfh_additional_analyses2 <- function(Seurat_RObj_path="./data/Ali_Tcell_combined
   subset_Seurat_Obj@meta.data$Day <- factor(subset_Seurat_Obj@meta.data$Day,
                                             levels = c("d0", "d5", "d12", "d28", "d60", "d90", "d120", "d180"))
   
+  ### order the meta data by time
+  subset_Seurat_Obj@meta.data <- subset_Seurat_Obj@meta.data[order(subset_Seurat_Obj@meta.data$Day),]
+  
+  ### rownames in the meta.data should be in the same order as colnames in the counts
+  Seurat_Obj@assays$RNA@counts <- Seurat_Obj@assays$RNA@counts[,rownames(subset_Seurat_Obj@meta.data)]
+  
   ### run PCA
   subset_Seurat_Obj <- RunPCA(subset_Seurat_Obj, npcs = 10)
   
@@ -564,20 +570,103 @@ tfh_additional_analyses2 <- function(Seurat_RObj_path="./data/Ali_Tcell_combined
   pca_contb <- pca_contb[order(-pca_contb[,"PC_1"]),]
   
   ### get genes that contributed to the PC1 the most
-  contb_threshold <- 0.1
+  contb_threshold <- 1
   important_genes <- rownames(pca_contb)[which(pca_contb[,"PC_1"] > contb_threshold)]
   
   #
-  ### a heatmap with the genes - 119 genes x 2127 cells
+  ### a heatmap with the genes - 22 genes x 2127 cells
   #
   
   ### get a matrix for the heatmap
   heatmap_mat <- data.frame(subset_Seurat_Obj@assays$RNA@counts[important_genes,], check.names = FALSE)
   
+  ### A function for scaling for heatmap
+  scale_h <- function(data, type, na.rm=TRUE) {
+    
+    if(type == "row") {
+      scaled <- t(scale(t(data)))
+    } else if(type == "col") {
+      scaled <- scale(data)
+    } else {
+      stop("Type is required: row or col")
+    }
+    
+    if(na.rm == TRUE && (length(which(is.na(scaled))) > 0))  {
+      scaled <- scaled[-unique(which(is.na(scaled), arr.ind = TRUE)[,1]),]
+    }
+    
+    return(scaled)
+  }
+  
+  ### scale the data
+  heatmap_mat_scaled <- scale_h(heatmap_mat, type = "row")
+  
+  ### see the distribution of the gene expressions
+  # plot(density(heatmap_mat_scaled))
+  
+  ### because there are some outliers in positive values
+  ### we set the maximum as abs(minimum)
+  heatmap_mat_scaled[which(heatmap_mat_scaled > abs(min(heatmap_mat_scaled)))] <- abs(min(heatmap_mat_scaled))
+  
+  ### set colside colors
+  uniqueV <- levels(subset_Seurat_Obj@meta.data$Day)
+  colors <- colorRampPalette(brewer.pal(9,"Blues"))(length(uniqueV))
+  names(colors) <- uniqueV
+  
+  ### hierarchical clustering functions
+  dist.spear <- function(x) as.dist(1-cor(t(x), method = "spearman"))
+  hclust.ave <- function(x) hclust(x, method="average")
+  
+  ### heatmap
+  png(paste0(outputDir, "PC1_Genes_Heatmap.png"), width = 2000, height = 1000)
+  par(oma=c(0,0,2,6))
+  heatmap.3(as.matrix(heatmap_mat_scaled), main = paste0("PC1_Genes_Heatmap_(",
+                                                         nrow(heatmap_mat_scaled), " Genes x ",
+                                                         ncol(heatmap_mat_scaled), " Cells)"),
+            xlab = "", ylab = "", col=greenred(100),
+            scale="none", key=T, keysize=0.8, density.info="density",
+            dendrogram = "none", trace = "none",
+            labRow = rownames(heatmap_mat_scaled), labCol = FALSE,
+            Rowv = TRUE, Colv = FALSE,
+            distfun=dist.spear, hclustfun=hclust.ave,
+            ColSideColors = cbind(colors[as.character(subset_Seurat_Obj@meta.data$Day)]),
+            cexRow = 2, cexCol = 2, na.rm = TRUE)
+  legend("left", inset = 0, xpd = TRUE, title = "Cell Collection Time", legend = names(colors), fill = colors, cex = 2, box.lty = 0)
+  dev.off()
   
   
+  #
+  ### Diversity & Clonality
+  #
   
+  ### diversity
   
+  ### data preparation
+  seurat_diversity <- rep(0, length(levels(subset_Seurat_Obj@meta.data$Day)))
+  seurat_cellNum <- rep(0, length(levels(subset_Seurat_Obj@meta.data$Day)))
+  names(seurat_diversity) <- levels(subset_Seurat_Obj@meta.data$Day)
+  names(seurat_cellNum) <- levels(subset_Seurat_Obj@meta.data$Day)
+  for(tp in names(seurat_diversity)) {
+    seurat_diversity[tp] <- length(unique(subset_Seurat_Obj@meta.data$clone_id[which(subset_Seurat_Obj@meta.data$Day == tp)]))
+    seurat_cellNum[tp] <- length(which(subset_Seurat_Obj@meta.data$Day == tp))
+  }
+  
+  ### data frame for barplot
+  plot_df <- data.frame(Value=c(seurat_diversity, seurat_cellNum),
+                        Time=c(names(seurat_diversity), names(seurat_cellNum)),
+                        Type=c(rep("Clone #", length(seurat_diversity)), rep("Cell #", length(seurat_cellNum))),
+                        stringsAsFactors = FALSE, check.names = FALSE)
+  
+  ### draw the plot
+  ggplot(data=plot_df, aes(x=Time, y=Value, fill=Type)) +
+    geom_bar(stat="identity", position=position_dodge())+
+    geom_text(aes(label=Value), vjust=-1, color="black",
+              position = position_dodge(0.9), size=3.5) +
+    labs(title = "TFH Cluster Clonal Diversity Over Time") +
+    scale_fill_brewer(palette="Paired")+
+    theme_classic(base_size = 16) +
+    theme(axis.title.y = element_blank())
+  ggsave(file = paste0(outputDir, "TFH_Cluster_Clonal_Diversity.png"), width = 12, height = 8, dpi = 300)
   
   
   
