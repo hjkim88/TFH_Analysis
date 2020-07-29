@@ -65,6 +65,12 @@ tfh_additional_analyses2 <- function(Seurat_RObj_path="./data/Ali_Tcell_combined
     install.packages("gplots")
     library(gplots, quietly = TRUE)
   }
+  if(!require(slingshot, quietly = TRUE)) {
+    if (!requireNamespace("BiocManager", quietly = TRUE))
+      install.packages("BiocManager")
+    BiocManager::install("slingshot")
+    require(slingshot, quietly = TRUE)
+  }
   
   ### load the Seurat object and save the object name
   tmp_env <- new.env()
@@ -655,19 +661,43 @@ tfh_additional_analyses2 <- function(Seurat_RObj_path="./data/Ali_Tcell_combined
   plot_df <- data.frame(Value=c(seurat_diversity, seurat_cellNum),
                         Time=c(names(seurat_diversity), names(seurat_cellNum)),
                         Type=c(rep("Clone #", length(seurat_diversity)), rep("Cell #", length(seurat_cellNum))),
+                        Pct=c(paste0(signif((seurat_diversity / seurat_cellNum) * 100, digits = 4), "%"),
+                              rep("", length(seurat_diversity))),
                         stringsAsFactors = FALSE, check.names = FALSE)
+  
+  ### factorize the time column
+  plot_df$Time <- factor(plot_df$Time, levels = levels(subset_Seurat_Obj@meta.data$Day))
   
   ### draw the plot
   ggplot(data=plot_df, aes(x=Time, y=Value, fill=Type)) +
-    geom_bar(stat="identity", position=position_dodge())+
+    geom_bar(stat="identity", position=position_dodge()) +
     geom_text(aes(label=Value), vjust=-1, color="black",
               position = position_dodge(0.9), size=3.5) +
-    labs(title = "TFH Cluster Clonal Diversity Over Time") +
-    scale_fill_brewer(palette="Paired")+
+    geom_text(aes(label=Pct, y=75), vjust=0, color="blue", size=3.5) +
+    labs(title = "TFH Cluster Clonal Diversity Over Time",
+         subtitle = "(Clone # / Cell #) x 100") +
+    scale_fill_brewer(palette="Paired") +
+    ylim(0, max(plot_df$Value) * 1.1) +
     theme_classic(base_size = 16) +
-    theme(axis.title.y = element_blank())
+    theme(axis.title.y = element_blank(),
+          plot.subtitle=element_text(size=12, color="blue"))
   ggsave(file = paste0(outputDir, "TFH_Cluster_Clonal_Diversity.png"), width = 12, height = 8, dpi = 300)
   
+  
+  ### pie plots for the clonality
+  
+  
+  ### pseudotime analysis - Slingshot
+  
+  # DimPlot(subset_Seurat_Obj, reduction = "pca", group.by = "Tissue", pt.size = 2)
+  
+  ###
+  subset_Seurat_Obj <- FindNeighbors(subset_Seurat_Obj, dims = 1:5, k.param = 5)
+  subset_Seurat_Obj <- FindClusters(subset_Seurat_Obj, resolution = 0.4)
+  
+  ###
+  slingshot_obj <- slingshot(Embeddings(subset_Seurat_Obj, "pca"), clusterLabels = subset_Seurat_Obj@meta.data$Day, 
+                             start.clus = "d0", reducedDim = "PCA")
   
   
 }
