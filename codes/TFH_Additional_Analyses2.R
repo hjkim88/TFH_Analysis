@@ -19,10 +19,12 @@
 #   Example
 #               > source("The_directory_of_TFH_Additional_Analyses.R/TFH_Additional_Analyses.R")
 #               > tfh_additional_analyses2(Seurat_RObj_path="./data/Ali_Tcell_combined_NEW.RDATA",
+#                                          clone_count_path="./results/Cluster17-TFH/Clone_Count_Summary.xlsx",
 #                                          outputDir="./results/")
 ###
 
 tfh_additional_analyses2 <- function(Seurat_RObj_path="./data/Ali_Tcell_combined_NEW.RDATA",
+                                     clone_count_path="./results/Cluster17-TFH/Clone_Count_Summary.xlsx",
                                      outputDir="./results/") {
   
   ### load libraries
@@ -686,6 +688,24 @@ tfh_additional_analyses2 <- function(Seurat_RObj_path="./data/Ali_Tcell_combined
   
   ### pie plots for the clonality
   
+  ### select top n clones
+  top_clone_num <- 12
+  
+  ### load the clone summary table
+  clone_summary_table <- read.xlsx2(file = clone_count_path, sheetIndex = 1,
+                                    stringsAsFactors=FALSE, check.names=FALSE)
+  
+  ### set time point values
+  time_points <- c("d0", "d5", "d12", "d28", "d60", "d90", "d120", "d180")
+  
+  ### data frame for the pie plot
+  plot_df <- data.frame(Freq=as.vector(t(clone_summary_table[1:top_clone_num,time_points])),
+                        clone_id="",
+                        cdr_ab="",
+                        stringsAsFactors = FASLE, check.names = FALSE)
+  
+  
+  
   
   ### pseudotime analysis - Slingshot
   
@@ -698,6 +718,29 @@ tfh_additional_analyses2 <- function(Seurat_RObj_path="./data/Ali_Tcell_combined
   ###
   slingshot_obj <- slingshot(Embeddings(subset_Seurat_Obj, "pca"), clusterLabels = subset_Seurat_Obj@meta.data$Day, 
                              start.clus = "d0", reducedDim = "PCA")
+  
+  
+  cell_pal <- function(cell_vars, pal_fun,...) {
+if (is.numeric(cell_vars)) {
+pal <- pal_fun(100, ...)
+return(pal[cut(cell_vars, breaks = 100)])
+} else {
+categories <- sort(unique(cell_vars))
+pal <- setNames(pal_fun(length(categories), ...), categories)
+return(pal[cell_vars])
+}
+}
+
+  
+  library(scales)
+cell_colors_clust <- cell_pal(subset_Seurat_Obj@meta.data$Day, hue_pal())
+cell_colors_clust <- cell_pal(levels(subset_Seurat_Obj@meta.data$Day), hue_pal())
+plot(reducedDim(slingshot_obj), col = cell_colors_clust, pch = 16, cex = 0.5)
+lines(slingshot_obj, lwd = 2, type = 'lineages', col = 'black')
+
+  
+  
+  
   
   
 }
