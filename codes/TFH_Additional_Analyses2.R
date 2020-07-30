@@ -699,12 +699,51 @@ tfh_additional_analyses2 <- function(Seurat_RObj_path="./data/Ali_Tcell_combined
   time_points <- c("d0", "d5", "d12", "d28", "d60", "d90", "d120", "d180")
   
   ### data frame for the pie plot
-  plot_df <- data.frame(Freq=as.vector(t(clone_summary_table[1:top_clone_num,time_points])),
-                        clone_id="",
-                        cdr_ab="",
-                        stringsAsFactors = FASLE, check.names = FALSE)
+  plot_df <- data.frame(freq=as.numeric(as.vector(t(clone_summary_table[1:top_clone_num,time_points]))),
+                        clone_id=c(sapply(clone_summary_table$clone_id[1:top_clone_num], function(x) rep(x, length(time_points)))),
+                        cdr_ab=c(sapply(clone_summary_table$cdr_ab[1:top_clone_num], function(x) rep(x, length(time_points)))),
+                        time=c(rep(time_points, top_clone_num)),
+                        stringsAsFactors = FALSE, check.names = FALSE)
   
+  ### remove zero frequencies
+  plot_df <- plot_df[which(plot_df$freq != 0),]
   
+  ### create empty pie chart results
+  p <- vector("list", length = length(unique(plot_df$clone_id)))
+  names(p) <- unique(plot_df$clone_id)
+  
+  ### draw pie plots for the top clones
+  for(clone in unique(plot_df$clone_id)) {
+    ### get the clone indicies
+    clone_idx <- which(plot_df$clone_id == clone)
+    
+    ### calculate percentages
+    total_sample_num <- sum(plot_df$freq[clone_idx])
+    pct <- sapply(plot_df$freq[clone_idx], function(x) signif(x*100/total_sample_num, digits = 3))
+    pct <- paste0(plot_df$freq[clone_idx], "(", pct, "%)")
+    
+    ### ggplot drawing
+    p[[clone]] <- ggplot(data = plot_df[clone_idx,],
+           aes(x = "", y = freq, fill = time)) +
+      geom_bar(stat = "identity", width = 1) +
+      coord_polar(theta="y") +
+      geom_text(label = pct,
+                position = position_stack(vjust = 0.5), size = 3) +
+      labs(x = NULL, y = NULL, title = clone) +
+      theme_classic(base_size = 16) +
+      theme(plot.title = element_text(hjust = 0.5, color = "black", size = 12),
+            axis.line = element_blank(),
+            axis.ticks = element_blank(),
+            axis.text = element_blank())
+  }
+  
+  ### arrange the plots and print out
+  fName <- paste0("TFH_Cluster_Clonality_Pie_Charts")
+  g <- arrangeGrob(grobs = p,
+                   nrow = 3,
+                   ncol = 4,
+                   top = fName)
+  ggsave(file = paste0(outputDir, fName, ".png"), g, width = 15, height = 9, dpi = 300)
   
   
   ### pseudotime analysis - Slingshot
