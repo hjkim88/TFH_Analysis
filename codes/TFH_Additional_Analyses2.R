@@ -73,6 +73,14 @@ tfh_additional_analyses2 <- function(Seurat_RObj_path="./data/Ali_Tcell_combined
     BiocManager::install("slingshot")
     require(slingshot, quietly = TRUE)
   }
+  if(!require(mclust, quietly = TRUE)) {
+    install.packages("mclust")
+    library(mclust, quietly = TRUE)
+  }
+  if(!require(scales, quietly = TRUE)) {
+    install.packages("scales")
+    library(scales, quietly = TRUE)
+  }
   
   ### load the Seurat object and save the object name
   tmp_env <- new.env()
@@ -750,33 +758,272 @@ tfh_additional_analyses2 <- function(Seurat_RObj_path="./data/Ali_Tcell_combined
   
   # DimPlot(subset_Seurat_Obj, reduction = "pca", group.by = "Tissue", pt.size = 2)
   
-  ###
+  ### clustering on the TFH cluster
   subset_Seurat_Obj <- FindNeighbors(subset_Seurat_Obj, dims = 1:5, k.param = 5)
   subset_Seurat_Obj <- FindClusters(subset_Seurat_Obj, resolution = 0.4)
   
-  ###
-  slingshot_obj <- slingshot(Embeddings(subset_Seurat_Obj, "pca"), clusterLabels = subset_Seurat_Obj@meta.data$Day, 
-                             start.clus = "d0", reducedDim = "PCA")
+  # DimPlot(subset_Seurat_Obj, reduction = "pca", group.by = "seurat_clusters", pt.size = 2)
   
+  ### run clustering on the PCA
+  pca_map <- Embeddings(subset_Seurat_Obj, reduction = "pca")[rownames(subset_Seurat_Obj@meta.data),1:10]
+  subset_Seurat_Obj@meta.data$mclust_clusters <- Mclust(pca_map)$classification[rownames(subset_Seurat_Obj@meta.data)]
   
-  cell_pal <- function(cell_vars, pal_fun,...) {
-if (is.numeric(cell_vars)) {
-pal <- pal_fun(100, ...)
-return(pal[cut(cell_vars, breaks = 100)])
-} else {
-categories <- sort(unique(cell_vars))
-pal <- setNames(pal_fun(length(categories), ...), categories)
-return(pal[cell_vars])
-}
-}
+  # DimPlot(subset_Seurat_Obj, reduction = "pca", group.by = "mclust_clusters", pt.size = 2)
+  
+  ### get slingshot object
+  slingshot_obj <- slingshot(pca_map, clusterLabels = subset_Seurat_Obj@meta.data$Day, 
+                             start.clus = "d0", end.clus = "d180", reducedDim = "PCA")
+  
+  ### a function for color brewer
+  cell_pal <- function(cell_vars, pal_fun) {
+    if (is.numeric(cell_vars)) {
+      pal <- pal_fun(100)
+      return(pal[cut(cell_vars, breaks = 100)])
+    } else {
+      categories <- sort(unique(cell_vars))
+      pal <- setNames(pal_fun(length(categories)), categories)
+      return(pal[cell_vars])
+    }
+  }
 
+  ### get colors for the clustering result
+  cell_colors_clust <- cell_pal(levels(subset_Seurat_Obj@meta.data$Day), hue_pal())
   
-  library(scales)
-cell_colors_clust <- cell_pal(subset_Seurat_Obj@meta.data$Day, hue_pal())
-cell_colors_clust <- cell_pal(levels(subset_Seurat_Obj@meta.data$Day), hue_pal())
-plot(reducedDim(slingshot_obj), col = cell_colors_clust, pch = 16, cex = 0.5)
-lines(slingshot_obj, lwd = 2, type = 'lineages', col = 'black')
-
+  #' @title Plot Slingshot output
+  #' @name plot-SlingshotDataSet
+  #' @aliases plot-SlingshotDataSet plot,SlingshotDataSet,ANY-method
+  #'
+  #' @description Tools for visualizing lineages inferred by \code{slingshot}.
+  #'
+  #' @param x a \code{SlingshotDataSet} with results to be plotted.
+  #' @param type character, the type of output to be plotted, can be one of
+  #'   \code{"lineages"}, \code{"curves"}, or \code{"both"} (by partial matching),
+  #'   see Details for more.
+  #' @param linInd integer, an index indicating which lineages should be plotted
+  #'   (default is to plot all lineages). If \code{col} is a vector, it will be
+  #'   subsetted by \code{linInd}.
+  #' @param show.constraints logical, whether or not the user-specified initial
+  #'   and terminal clusters should be specially denoted by green and red dots,
+  #'   respectively.
+  #' @param add logical, indicates whether the output should be added to an
+  #'   existing plot.
+  #' @param dims numeric, which dimensions to plot (default is \code{1:2}).
+  #' @param asp numeric, the y/x aspect ratio, see \code{\link{plot.window}}.
+  #' @param cex numeric, amount by which points should be magnified, see
+  #'   \code{\link{par}}.
+  #' @param lwd numeric, the line width, see \code{\link{par}}.
+  #' @param col character or numeric, color(s) for lines, see \code{\link{par}}.
+  #' @param ... additional parameters to be passed to \code{\link{lines}}.
+  #'
+  #' @details If \code{type == 'lineages'}, straight line connectors between
+  #'   cluster centers will be plotted. If \code{type == 'curves'}, simultaneous
+  #'   principal curves will be plotted.
+  #'
+  #' @details When \code{type} is not specified, the function will first check the
+  #'   \code{curves} slot and plot the curves, if present. Otherwise,
+  #'   \code{lineages} will be plotted, if present.
+  #'
+  #' @return returns \code{NULL}.
+  #'
+  #' @examples
+  #' data("slingshotExample")
+  #' rd <- slingshotExample$rd
+  #' cl <- slingshotExample$cl
+  #' sds <- slingshot(rd, cl, start.clus = "1")
+  #' plot(sds, type = 'b')
+  #'
+  #' # add to existing plot
+  #' plot(rd, col = 'grey50')
+  #' lines(sds, lwd = 3)
+  #'
+  #' @import graphics
+  #' @import grDevices
+  #' @export
+  setMethod(
+    f = "plot",
+    signature = signature(x = "SlingshotDataSet"),
+    definition = function(x, type = NULL,
+                          linInd = NULL,
+                          show.constraints = FALSE,
+                          constraints.col = NULL,
+                          add = FALSE,
+                          dims = seq_len(2),
+                          asp = 1,
+                          cex = 2,
+                          lwd = 2,
+                          col = 1,
+                          ...) {
+      col <- rep(col, length(slingLineages(x)))
+      curves <- FALSE
+      lineages <- FALSE
+      if(is.null(type)){
+        if(length(slingCurves(x)) > 0){
+          type <- 'curves'
+        }else if(length(slingLineages(x)) > 0){
+          type <- 'lineages'
+        }else{
+          stop('No lineages or curves detected.')
+        }
+      }else{
+        type <- c('curves','lineages','both')[pmatch(type,
+                                                     c('curves','lineages','both'))]
+        if(is.na(type)){
+          stop('Unrecognized type argument.')
+        }
+      }
+      
+      if(type %in% c('lineages','both')){
+        lineages <- TRUE
+      }
+      if(type %in% c('curves','both')){
+        curves <- TRUE
+      }
+      
+      if(lineages & (length(slingLineages(x))==0)){
+        stop('No lineages detected.')
+      }
+      if(curves & (length(slingCurves(x))==0)){
+        stop('No curves detected.')
+      }
+      
+      if(is.null(linInd)){
+        linInd <- seq_along(slingLineages(x))
+      }else{
+        linInd <- as.integer(linInd)
+        if(!all(linInd %in% seq_along(slingLineages(x)))){
+          if(any(linInd %in% seq_along(slingLineages(x)))){
+            linInd.removed <-
+              linInd[! linInd %in% seq_along(slingLineages(x))]
+            linInd <-
+              linInd[linInd %in% seq_along(slingLineages(x))]
+            message('Unrecognized lineage indices (linInd): ',
+                    paste(linInd.removed, collapse = ", "))
+          }else{
+            stop('None of the provided lineage indices',
+                 ' (linInd) were found.')
+          }
+        }
+      }
+      
+      if(lineages){
+        X <- reducedDim(x)
+        clusterLabels <- slingClusterLabels(x)
+        connectivity <- slingAdjacency(x)
+        clusters <- rownames(connectivity)
+        nclus <- nrow(connectivity)
+        centers <- t(vapply(clusters,function(clID){
+          w <- clusterLabels[,clID]
+          return(apply(X, 2, weighted.mean, w = w))
+        }, rep(0,ncol(X))))
+        rownames(centers) <- clusters
+        X <- X[rowSums(clusterLabels) > 0, , drop = FALSE]
+        clusterLabels <- clusterLabels[rowSums(clusterLabels) > 0, ,
+                                       drop = FALSE]
+        linC <- slingParams(x)
+        clus2include <- unique(unlist(slingLineages(x)[linInd]))
+      }
+      
+      if(!add){
+        xs <- NULL
+        ys <- NULL
+        if(lineages){
+          xs <- c(xs, centers[,dims[1]])
+          ys <- c(ys, centers[,dims[2]])
+        }
+        if(curves){
+          npoints <- nrow(slingCurves(x)[[1]]$s)
+          xs <- c(xs, as.numeric(vapply(slingCurves(x),
+                                        function(c){ c$s[,dims[1]] }, rep(0,npoints))))
+          ys <- c(ys, as.numeric(vapply(slingCurves(x),
+                                        function(c){ c$s[,dims[2]] }, rep(0,npoints))))
+        }
+        plot(x = NULL, y = NULL, asp = asp,
+             xlim = range(xs), ylim = range(ys),
+             xlab = colnames(reducedDim(x))[dims[1]],
+             ylab = colnames(reducedDim(x))[dims[2]])
+      }
+      
+      if(lineages){
+        for(i in seq_len(nclus-1)){
+          for(j in seq(i+1,nclus)){
+            if(connectivity[i,j]==1 &
+               all(clusters[c(i,j)] %in% clus2include)){
+              lines(centers[c(i,j), dims],
+                    lwd = lwd, col = col[1], ...)
+            }
+          }
+        }
+        points(centers[clusters %in% clus2include, dims],
+               cex = cex, pch = 16, col = col[1])
+        if(show.constraints && !is.null(constraints.col)){
+          for(const in names(constraints.col)) {
+            points(centers[clusters %in% const, dims,
+                           drop=FALSE], cex = cex / 2,
+                   col = constraints.col[const], pch = 16)
+          }
+        }
+      }
+      if(curves){
+        for(ii in seq_along(slingCurves(x))[linInd]){
+          c <- slingCurves(x)[[ii]]
+          lines(c$s[c$ord, dims], lwd = lwd, col = col[ii], ...)
+        }
+      }
+      invisible(NULL)
+    }
+  )
+  
+  ### Trajectory inference
+  png(paste0(outputDir, "Trajectory_Inference_Time_PCA.png"), width = 2500, height = 1500, res = 200)
+  plot(reducedDim(slingshot_obj),
+       main="Trajectory Inference Based On Time (PCA)",
+       col = cell_colors_clust[subset_Seurat_Obj@meta.data$Day],
+       pch = 19, cex = 1)
+  lines(slingshot_obj, lwd = 2, type = "lineages", col = "black",
+        show.constraints = TRUE, constraints.col = cell_colors_clust)
+  legend("bottomleft", legend = names(cell_colors_clust), col = cell_colors_clust,
+         pch = 19)
+  dev.off()
+  
+  #
+  ### do the same thing with the mclust clusters
+  #
+  
+  ### add "cluster" to the mclust_clusters column
+  subset_Seurat_Obj@meta.data$mclust_clusters <- paste0("cluster", subset_Seurat_Obj@meta.data$mclust_clusters)
+  
+  ### factorize the mclust_clusters column
+  ordered_clusters <- unique(subset_Seurat_Obj@meta.data$mclust_clusters)
+  ordered_clusters <- ordered_clusters[order(ordered_clusters)]
+  subset_Seurat_Obj@meta.data$mclust_clusters <- factor(subset_Seurat_Obj@meta.data$mclust_clusters,
+                                                        levels = as.character(ordered_clusters))
+  
+  ### get slingshot object
+  slingshot_obj <- slingshot(pca_map, clusterLabels = subset_Seurat_Obj@meta.data$mclust_clusters, 
+                             start.clus = "cluster1", end.clus = "cluster8", reducedDim = "PCA")
+  
+  ### get colors for the clustering result
+  cell_colors_clust <- cell_pal(levels(subset_Seurat_Obj@meta.data$mclust_clusters), hue_pal())
+  
+  ### Trajectory inference
+  png(paste0(outputDir, "Trajectory_Inference_Mclust_PCA.png"), width = 2500, height = 1500, res = 200)
+  plot(reducedDim(slingshot_obj),
+       main="Trajectory Inference Based On Mclust Clusters (PCA)",
+       col = cell_colors_clust[as.character(subset_Seurat_Obj@meta.data$mclust_clusters)],
+       pch = 19, cex = 1)
+  lines(slingshot_obj, lwd = 2, type = "lineages", col = "black",
+        show.constraints = TRUE, constraints.col = cell_colors_clust)
+  legend("bottomleft", legend = names(cell_colors_clust), col = cell_colors_clust,
+         pch = 19)
+  dev.off()
+  
+  
+  ### we do not expect all the cells are moving over time
+  ### we just want to know if PC1 is associated with the maturation process
+  ### (d0, d5) -> (d12, d28) -> (d60, d80, d120, d180)
+  ### look at the heatmap - there are about 10 genes that contributed to the PC1
+  ### and only highly expressed in d5 & d12 time points
+  ### see the gene expression changes in the PCA - keep the trajectory graph
   
   
   
