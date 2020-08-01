@@ -763,16 +763,7 @@ tfh_additional_analyses2 <- function(Seurat_RObj_path="./data/Ali_Tcell_combined
   subset_Seurat_Obj <- FindClusters(subset_Seurat_Obj, resolution = 0.4)
   
   # DimPlot(subset_Seurat_Obj, reduction = "pca", group.by = "seurat_clusters", pt.size = 2)
-  
-  ### run clustering on the PCA
-  pca_map <- Embeddings(subset_Seurat_Obj, reduction = "pca")[rownames(subset_Seurat_Obj@meta.data),1:10]
-  subset_Seurat_Obj@meta.data$mclust_clusters <- Mclust(pca_map)$classification[rownames(subset_Seurat_Obj@meta.data)]
-  
   # DimPlot(subset_Seurat_Obj, reduction = "pca", group.by = "mclust_clusters", pt.size = 2)
-  
-  ### get slingshot object
-  slingshot_obj <- slingshot(pca_map, clusterLabels = subset_Seurat_Obj@meta.data$Day, 
-                             start.clus = "d0", end.clus = "d180", reducedDim = "PCA")
   
   ### a function for color brewer
   cell_pal <- function(cell_vars, pal_fun) {
@@ -785,9 +776,6 @@ tfh_additional_analyses2 <- function(Seurat_RObj_path="./data/Ali_Tcell_combined
       return(pal[cell_vars])
     }
   }
-
-  ### get colors for the clustering result
-  cell_colors_clust <- cell_pal(levels(subset_Seurat_Obj@meta.data$Day), hue_pal())
   
   #' @title Plot Slingshot output
   #' @name plot-SlingshotDataSet
@@ -973,21 +961,10 @@ tfh_additional_analyses2 <- function(Seurat_RObj_path="./data/Ali_Tcell_combined
     }
   )
   
-  ### Trajectory inference
-  png(paste0(outputDir, "Trajectory_Inference_Time_PCA.png"), width = 2500, height = 1500, res = 200)
-  plot(reducedDim(slingshot_obj),
-       main="Trajectory Inference Based On Time (PCA)",
-       col = cell_colors_clust[subset_Seurat_Obj@meta.data$Day],
-       pch = 19, cex = 1)
-  lines(slingshot_obj, lwd = 2, type = "lineages", col = "black",
-        show.constraints = TRUE, constraints.col = cell_colors_clust)
-  legend("bottomleft", legend = names(cell_colors_clust), col = cell_colors_clust,
-         pch = 19)
-  dev.off()
-  
-  #
-  ### do the same thing with the mclust clusters
-  #
+  ### run clustering on the PCA
+  set.seed(1234)
+  pca_map <- Embeddings(subset_Seurat_Obj, reduction = "pca")[rownames(subset_Seurat_Obj@meta.data),1:10]
+  subset_Seurat_Obj@meta.data$mclust_clusters <- Mclust(pca_map)$classification[rownames(subset_Seurat_Obj@meta.data)]
   
   ### add "cluster" to the mclust_clusters column
   subset_Seurat_Obj@meta.data$mclust_clusters <- paste0("cluster", subset_Seurat_Obj@meta.data$mclust_clusters)
@@ -1000,7 +977,7 @@ tfh_additional_analyses2 <- function(Seurat_RObj_path="./data/Ali_Tcell_combined
   
   ### get slingshot object
   slingshot_obj <- slingshot(pca_map, clusterLabels = subset_Seurat_Obj@meta.data$mclust_clusters, 
-                             start.clus = "cluster1", end.clus = "cluster8", reducedDim = "PCA")
+                             start.clus = "cluster1", end.clus = "cluster6", reducedDim = "PCA")
   
   ### get colors for the clustering result
   cell_colors_clust <- cell_pal(levels(subset_Seurat_Obj@meta.data$mclust_clusters), hue_pal())
@@ -1017,16 +994,50 @@ tfh_additional_analyses2 <- function(Seurat_RObj_path="./data/Ali_Tcell_combined
          pch = 19)
   dev.off()
   
+  #
+  ### do the same thing with the time points
+  #
   
-  ### we do not expect all the cells are moving over time
+  ### get slingshot object
+  slingshot_obj <- slingshot(pca_map, clusterLabels = subset_Seurat_Obj@meta.data$Day, 
+                             start.clus = "d0", end.clus = "d180", reducedDim = "PCA")
+  
+  ### get colors for the clustering result
+  cell_colors_clust <- cell_pal(levels(subset_Seurat_Obj@meta.data$Day), hue_pal())
+  
+  ### Trajectory inference
+  png(paste0(outputDir, "Trajectory_Inference_Time_PCA.png"), width = 2500, height = 1500, res = 200)
+  plot(reducedDim(slingshot_obj),
+       main="Trajectory Inference Based On Time (PCA)",
+       col = cell_colors_clust[subset_Seurat_Obj@meta.data$Day],
+       pch = 19, cex = 1)
+  lines(slingshot_obj, lwd = 2, type = "lineages", col = "black",
+        show.constraints = TRUE, constraints.col = cell_colors_clust)
+  legend("bottomleft", legend = names(cell_colors_clust), col = cell_colors_clust,
+         pch = 19)
+  dev.off()
+  
+  ### we do not expect all the cells moving over time
   ### we just want to know if PC1 is associated with the maturation process
   ### (d0, d5) -> (d12, d28) -> (d60, d80, d120, d180)
   ### look at the heatmap - there are about 10 genes that contributed to the PC1
   ### and only highly expressed in d5 & d12 time points
   ### see the gene expression changes in the PCA - keep the trajectory graph
   
+  ### the genes highly expressed in d5 & d12
+  d5_d12_genes <- c("AC004585.1", "IGFBP4", "GBP2", "LAG3",
+                    "PTMS", "ICOS", "GPRIN3", "CTLA4")
   
+  library(tradeSeq)
+  library(RColorBrewer)
+  library(SingleCellExperiment)
+  library(slingshot)
   
-  
+  set.seed(1234)
+  icMat <- evaluateK(counts = as.matrix(subset_Seurat_Obj@assays$RNA@counts),
+                     sds = slingshot_obj,
+                     k = 3:10, 
+                     nGenes = 200,
+                     verbose = T)
   
 }
