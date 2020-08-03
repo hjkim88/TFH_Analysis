@@ -81,6 +81,22 @@ tfh_additional_analyses2 <- function(Seurat_RObj_path="./data/Ali_Tcell_combined
     install.packages("scales")
     library(scales, quietly = TRUE)
   }
+  if(!require(tidymodels, quietly = TRUE)) {
+    install.packages("tidymodels")
+    library(tidymodels, quietly = TRUE)
+  }
+  if(!require(ranger, quietly = TRUE)) {
+    install.packages("ranger")
+    library(ranger, quietly = TRUE)
+  }
+  if(!require(viridis, quietly = TRUE)) {
+    install.packages("viridis")
+    require(viridis, quietly = TRUE)
+  }
+  if(!require(ggbeeswarm, quietly = TRUE)) {
+    install.packages("ggbeeswarm")
+    require(ggbeeswarm, quietly = TRUE)
+  }
   
   ### load the Seurat object and save the object name
   tmp_env <- new.env()
@@ -1028,16 +1044,124 @@ tfh_additional_analyses2 <- function(Seurat_RObj_path="./data/Ali_Tcell_combined
   d5_d12_genes <- c("AC004585.1", "IGFBP4", "GBP2", "LAG3",
                     "PTMS", "ICOS", "GPRIN3", "CTLA4")
   
-  library(tradeSeq)
-  library(RColorBrewer)
-  library(SingleCellExperiment)
-  library(slingshot)
   
+  
+  ### seurat find clusters - among time points
+  
+  ### (d0, d5) -> (d12, d28) logFC (-) (+)
+  ### (d60, d80, d120, d180) logFC (+) (-)
+  
+  
+  ### apply machine learning (random forest) to make a classifier for
+  ### preditcting the time points from the gene expression
+  ### then extract genes that are highly contributed to the classifier
+  ### the genes should be the most important factors to predict the time points
+  ### which means they sensitively change along the time points
+  
+  ### Get top 1000 highly variable genes
+  top_hvg <- HVFInfo(subset_Seurat_Obj) %>% 
+    mutate(., gene = rownames(.)) %>% 
+    arrange(desc(variance)) %>% 
+    top_n(1000, variance) %>% 
+    pull(gene)
+  
+  ### Prepare data for random forest
+  dat_use <- t(GetAssayData(subset_Seurat_Obj, slot = "data")[top_hvg,])
+  
+  ### for the curve 3, so the 3rd column
+  ### slingshot_obj@lineages
+  ### [3]: "d0" "d28" "d60"
+  ### this is the best curve that we want to see
+  ### PC1 values go right over time
+  dat_use_df <- cbind(slingPseudotime(slingshot_obj)[,3], dat_use)
+  
+  ### check the lineage 3 weight
+  ### beeswarm plot
+  plot_df <- data.frame(Weight=slingPseudotime(slingshot_obj)[,3],
+                        Time=subset_Seurat_Obj@meta.data[rownames(slingPseudotime(slingshot_obj)),"Day"],
+                        stringsAsFactors = FALSE, check.names = FALSE)
+  plot_df <- plot_df[order(plot_df$Time),]
+  # par(mfrow = c(1,1))
+  # plot(plot_df$Weight, col = cell_colors_clust[plot_df$Time], pch = 19)
+  ggplot(plot_df, aes_string(x="Time", y="Weight")) +
+    theme_classic(base_size = 16) +
+    geom_boxplot() +
+    geom_beeswarm(aes_string(color="Time"), na.rm = TRUE) +
+    stat_compare_means() +
+    labs(x = "", y = "Lineage Weight") +
+    theme(legend.position="right")
+  ggsave(file = paste0(outputDir, "Beeswarm_Lineage_Weights_per_Time.png"), width = 20, height = 12)
+  
+  ### preprocessing
+  colnames(dat_use_df)[1] <- "time"
+  dat_use_df <- as.data.frame(dat_use_df[!is.na(dat_use_df[,1]),])
+  dat_use_colnames <- colnames(dat_use_df)
+  colnames(dat_use_df) <- make.names(colnames(dat_use_df))
+  
+  ### why dat_use values are all zero?
+  
+  
+  ### split the data into training and testing cells
   set.seed(1234)
-  icMat <- evaluateK(counts = as.matrix(subset_Seurat_Obj@assays$RNA@counts),
-                     sds = slingshot_obj,
-                     k = 3:10, 
-                     nGenes = 200,
-                     verbose = T)
+  dat_split <- initial_split(dat_use_df, prop = 4/5)
+  dat_train <- training(dat_split)
+  dat_val <- testing(dat_split)
+  
+  ### train the prediction model with random forest
+  ### mtry: Number of variables available for splitting at each tree node.
+  ### For classification models, the default is the square root of the number of predictor variables (rounded down).
+  ### For regression models, it is the number of predictor variables divided by 3 (rounded down).
+  ### trees: Number of trees to grow.
+  ### Larger number of trees produce more stable models and covariate importance estimates,
+  ### but require more memory and a longer run time. For small datasets, 50 trees may be sufficient.
+  ### For larger datasets, 500 or more may be required.
+  model <- rand_forest(mtry = 300, trees = 2000, min_n = 10, mode = "regression") %>%
+    set_engine("ranger", importance = "impurity", num.threads = 4) %>%
+    fit(time ~ ., data = dat_train)
+  
+  ### Regression result
+  val_results <- dat_val %>% 
+    mutate(estimate = predict(model, .[,-1]) %>% pull()) %>% 
+    dplyr::select(truth = time, estimate)
+  met <- metrics(data = val_results, truth = truth, estimate = estimate)
+  png(paste0(outputDir, "Random_Forest_Regression_Result.png"), width = 1500, height = 900, res = 120)
+  plot(val_results, pch = 16, main = paste0("Regression Model Result\n",
+                                            met$.metric[1], ": ", signif(met$.estimate[1], 4), " ",
+                                            met$.metric[2], ": ", signif(met$.estimate[2], 2), " ",
+                                            met$.metric[3], ": ", signif(met$.estimate[3], 4)),
+       xlab = "Original_Lineage_Weights", ylab = "Predicted_Lineage_Weights")
+  dev.off()
+  # summary(dat_use_df$time)
+  
+  ### select top 9 genes that 
+  var_imp <- sort(model$fit$variable.importance, decreasing = TRUE)
+  top_genes <- names(var_imp)[1:9]
+  
+  ### color palette
+  pal <- viridis(100, end = 0.95)
+  
+  ### draw a plot
+  png(paste0(outputDir, "PCA_Random_Forest_9_Genes.png"), width = 1500, height = 900, res = 120)
+  par(mfrow = c(3, 3))
+  for(i in seq_along(top_genes)) {
+    colors <- pal[cut(dat_use[,top_genes[i]], breaks = 100)]
+    plot(reducedDim(slingshot_obj), col = colors, 
+         pch = 19, cex = 1, main = top_genes[i])
+    ### legend
+    lgd = rep(NA, 9)
+    lgd[c(1,5,9)] = c(signif(max(dat_use[,top_genes[i]]), 3),
+                       signif(mean(dat_use[,top_genes[i]]), 3),
+                       signif(min(dat_use[,top_genes[i]]), 3))
+    legend("bottomleft",
+           legend = lgd,
+           fill = viridis(9, end = 0.95),
+           border = NA,
+           bty = 'n',
+           x.intersp = 0.5,
+           y.intersp = 0.3,
+           cex = 0.7, text.font = 2)
+    # lines(slingshot_obj, lwd = 2, col = 'black', type = 'lineages')
+  }
+  dev.off()
   
 }
