@@ -108,9 +108,10 @@ tfh_additional_analyses <- function(Seurat_RObj_path="./data/Ali_Tcell_combined_
   ### One plot with all the groups + each group
   ### x: a numeric vector of first component
   ### y: a numeric vector of second component
-  ### group: a factor vector of group info
+  ### group_color: a factor vector of group1 info
+  ### group_shape: a factor vector of group2 info
   ### type: type of the dimensionality reduction method
-  multiReducPlot <- function(x, y, group, type=c("PCA", "TSNE", "UMAP"), fName="Whole Group & Each", isConvex=FALSE, isPrint=FALSE) {
+  multiReducPlot <- function(x, y, group_color, group_shape=NULL, type=c("PCA", "TSNE", "UMAP"), fName="Whole Group & Each", isConvex=FALSE, isPrint=FALSE) {
     
     ### load library
     if(!require(ggplot2, quietly = TRUE)) {
@@ -134,9 +135,17 @@ tfh_additional_analyses <- function(Seurat_RObj_path="./data/Ali_Tcell_combined_
     }
     
     ### create a data frame for ggplot
-    group <- factor(as.character(group),
-                    levels = intersect(levels(group), unique(group)))
-    plot_df <- data.frame(X=x, Y=y, Group=group)
+    group_color <- as.factor(group_color)
+    group_color <- factor(as.character(group_color),
+                    levels = intersect(levels(group_color), unique(group_color)))
+    if(is.null(group_shape)) {
+      plot_df <- data.frame(X=x, Y=y, Group=group_color, Group2="")
+    } else {
+      group_shape <- as.factor(group_shape)
+      group_shape <- factor(as.character(group_shape),
+                            levels = intersect(levels(group_shape), unique(group_shape)))
+      plot_df <- data.frame(X=x, Y=y, Group=group_color, Group2=group_shape)
+    }
     
     ### set x & y axes labels
     if(type[1] == "PCA") {
@@ -153,45 +162,57 @@ tfh_additional_analyses <- function(Seurat_RObj_path="./data/Ali_Tcell_combined_
     }
     
     ### set colors for each group
-    col_palette <- hue_pal()(length(levels(group)))
-    names(col_palette) <- levels(group)
+    col_palette <- hue_pal()(length(levels(group_color)))
+    names(col_palette) <- levels(group_color)
     
     ### 1. One plot with all the groups + each group
-    p <- vector("list", length(levels(group))+1)
+    p <- vector("list", length(levels(group_color))+1)
     x_range <- c(min(plot_df$X), max(plot_df$X))
     y_range <- c(min(plot_df$Y), max(plot_df$Y))
     if(isConvex) {
       p[[1]] <- ggplot(plot_df, aes_string(x="X", y="Y")) +
-        geom_point(aes_string(col="Group"), size=2, alpha=0.6) +
+        geom_point(aes_string(col="Group", shape="Group2"), size=2, alpha=0.6) +
         xlab(x_label) + ylab(y_label) +
         xlim(x_range[1], x_range[2]) + ylim(y_range[1], y_range[2]) +
         ggtitle("All") +
         theme_classic(base_size = 16) +
-        theme(legend.position = "none", plot.title = element_text(hjust = 0.5)) +
+        theme(legend.position = "none", legend.title = element_blank(),
+              plot.title = element_text(hjust = 0.5),
+              legend.spacing.y = unit(0, "mm"),
+              legend.background = element_blank(),
+              legend.box.background = element_rect(colour = "gray50")) +
         geom_convexhull(aes_string(col="Group", fill="Group"), size=1, alpha=0)
     } else {
       p[[1]] <- ggplot(plot_df, aes_string(x="X", y="Y")) +
-        geom_point(aes_string(col="Group"), size=2, alpha=0.6) +
+        geom_point(aes_string(col="Group", shape="Group2"), size=2, alpha=0.6) +
         xlab(x_label) + ylab(y_label) +
         xlim(x_range[1], x_range[2]) + ylim(y_range[1], y_range[2]) +
         ggtitle("All") +
         theme_classic(base_size = 16) +
-        theme(legend.position = "none", plot.title = element_text(hjust = 0.5))
+        theme(legend.position = "none", legend.title = element_blank(),
+              plot.title = element_text(hjust = 0.5),
+              legend.background = element_blank(),
+              legend.spacing.y = unit(0, "mm"),
+              legend.box.background = element_rect(colour = "gray50"))
     }
-    for(i in 2:(length(levels(group))+1)) {
-      p[[i]] <- ggplot(plot_df[which(plot_df$Group == levels(group)[i-1]),], aes_string(x="X", y="Y")) +
-        geom_point(col=col_palette[levels(group)[i-1]], size=2, alpha=0.8) +
+    for(i in 2:(length(levels(group_color))+1)) {
+      p[[i]] <- ggplot(plot_df[which(plot_df$Group == levels(group_color)[i-1]),], aes_string(x="X", y="Y")) +
+        geom_point(aes_string(shape="Group2"), col=col_palette[levels(group_color)[i-1]], size=2, alpha=0.8) +
         xlab(x_label) + ylab(y_label) +
         xlim(x_range[1], x_range[2]) + ylim(y_range[1], y_range[2]) +
-        ggtitle(levels(group)[i-1]) +
+        ggtitle(levels(group_color)[i-1]) +
         theme_classic(base_size = 16) +
-        theme(plot.title = element_text(hjust = 0.5, 
-                                        color = col_palette[levels(group)[i-1]]))
+        theme(legend.title = element_blank(),
+              plot.title = element_text(hjust = 0.5, 
+                                        color = col_palette[levels(group_color)[i-1]]),
+              legend.background = element_blank(),
+              legend.spacing.y = unit(0, "mm"),
+              legend.box.background = element_rect(colour = "gray50"))
     }
     ### arrange the plots
     g <- arrangeGrob(grobs = p,
-                     nrow = ceiling(sqrt(length(levels(group))+1)),
-                     ncol = ceiling(sqrt(length(levels(group))+1)),
+                     nrow = ceiling(sqrt(length(levels(group_color))+1)),
+                     ncol = ceiling(sqrt(length(levels(group_color))+1)),
                      top = fName)
     
     if(isPrint) {
@@ -208,7 +229,9 @@ tfh_additional_analyses <- function(Seurat_RObj_path="./data/Ali_Tcell_combined_
   ### PCA plot
   g <- multiReducPlot(x = subset_Seurat_Obj@reductions$pca@cell.embeddings[,"PC_1"],
                       y = subset_Seurat_Obj@reductions$pca@cell.embeddings[,"PC_2"],
-                      group = subset_Seurat_Obj@meta.data$Day, type = "PCA",
+                      group_color = subset_Seurat_Obj@meta.data$Day,
+                      group_shape = subset_Seurat_Obj@meta.data$Tissue,
+                      type = "PCA",
                       fName = "PCA_TFH_Cluster_17", isPrint = TRUE, isConvex = TRUE)
   ggsave(file = paste0(outputDir, "PCA_TFH_Cluster_17.png"), g, width = 20, height = 10, dpi = 300)
   
@@ -225,7 +248,9 @@ tfh_additional_analyses <- function(Seurat_RObj_path="./data/Ali_Tcell_combined_
   ### UMAP plot
   g <- multiReducPlot(x = subset_Seurat_Obj@reductions$umap@cell.embeddings[,"UMAP_1"],
                       y = subset_Seurat_Obj@reductions$umap@cell.embeddings[,"UMAP_2"],
-                      group = subset_Seurat_Obj@meta.data$Day, type = "UMAP",
+                      group_color = subset_Seurat_Obj@meta.data$Day,
+                      group_shape = subset_Seurat_Obj@meta.data$Tissue,
+                      type = "UMAP",
                       fName = "UMAP_TFH_Cluster_17", isPrint = TRUE, isConvex = TRUE)
   ggsave(file = paste0(outputDir, "UMAP_TFH_Cluster_17.png"), g, width = 20, height = 10, dpi = 300)
   
