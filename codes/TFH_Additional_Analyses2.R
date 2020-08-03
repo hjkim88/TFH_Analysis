@@ -773,6 +773,7 @@ tfh_additional_analyses2 <- function(Seurat_RObj_path="./data/Ali_Tcell_combined
   ### pseudotime analysis - Slingshot
   
   # DimPlot(subset_Seurat_Obj, reduction = "pca", group.by = "Tissue", pt.size = 2)
+  # ggsave(file = paste0(outputDir, "PCA_LN_PB.png"), width = 15, height = 10)
   
   ### clustering on the TFH cluster
   subset_Seurat_Obj <- FindNeighbors(subset_Seurat_Obj, dims = 1:5, k.param = 5)
