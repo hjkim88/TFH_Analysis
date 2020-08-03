@@ -1000,7 +1000,7 @@ tfh_additional_analyses2 <- function(Seurat_RObj_path="./data/Ali_Tcell_combined
   
   ### Trajectory inference
   png(paste0(outputDir, "Trajectory_Inference_Mclust_PCA.png"), width = 2500, height = 1500, res = 200)
-  plot(reducedDim(slingshot_obj),
+  plot(pca_map,
        main="Trajectory Inference Based On Mclust Clusters (PCA)",
        col = cell_colors_clust[as.character(subset_Seurat_Obj@meta.data$mclust_clusters)],
        pch = 19, cex = 1)
@@ -1010,48 +1010,6 @@ tfh_additional_analyses2 <- function(Seurat_RObj_path="./data/Ali_Tcell_combined
          pch = 19)
   dev.off()
   
-  #
-  ### do the same thing with the time points
-  #
-  
-  ### get slingshot object
-  slingshot_obj <- slingshot(pca_map, clusterLabels = subset_Seurat_Obj@meta.data$Day, 
-                             start.clus = "d0", end.clus = "d180", reducedDim = "PCA")
-  
-  ### get colors for the clustering result
-  cell_colors_clust <- cell_pal(levels(subset_Seurat_Obj@meta.data$Day), hue_pal())
-  
-  ### Trajectory inference
-  png(paste0(outputDir, "Trajectory_Inference_Time_PCA.png"), width = 2500, height = 1500, res = 200)
-  plot(reducedDim(slingshot_obj),
-       main="Trajectory Inference Based On Time (PCA)",
-       col = cell_colors_clust[subset_Seurat_Obj@meta.data$Day],
-       pch = 19, cex = 1)
-  lines(slingshot_obj, lwd = 2, type = "lineages", col = "black",
-        show.constraints = TRUE, constraints.col = cell_colors_clust)
-  legend("bottomleft", legend = names(cell_colors_clust), col = cell_colors_clust,
-         pch = 19)
-  dev.off()
-  
-  ### we do not expect all the cells moving over time
-  ### we just want to know if PC1 is associated with the maturation process
-  ### (d0, d5) -> (d12, d28) -> (d60, d80, d120, d180)
-  ### look at the heatmap - there are about 10 genes that contributed to the PC1
-  ### and only highly expressed in d5 & d12 time points
-  ### see the gene expression changes in the PCA - keep the trajectory graph
-  
-  ### the genes highly expressed in d5 & d12
-  d5_d12_genes <- c("AC004585.1", "IGFBP4", "GBP2", "LAG3",
-                    "PTMS", "ICOS", "GPRIN3", "CTLA4")
-  
-  
-  
-  ### seurat find clusters - among time points
-  
-  ### (d0, d5) -> (d12, d28) logFC (-) (+)
-  ### (d60, d80, d120, d180) logFC (+) (-)
-  
-  
   ### apply machine learning (random forest) to make a classifier for
   ### preditcting the time points from the gene expression
   ### then extract genes that are highly contributed to the classifier
@@ -1059,46 +1017,99 @@ tfh_additional_analyses2 <- function(Seurat_RObj_path="./data/Ali_Tcell_combined
   ### which means they sensitively change along the time points
   
   ### Get top 1000 highly variable genes
-  top_hvg <- HVFInfo(subset_Seurat_Obj) %>% 
-    mutate(., gene = rownames(.)) %>% 
-    arrange(desc(variance)) %>% 
-    top_n(1000, variance) %>% 
-    pull(gene)
+  # top_hvg <- HVFInfo(subset_Seurat_Obj) %>% 
+  #   mutate(., gene = rownames(.)) %>% 
+  #   arrange(desc(variance)) %>% 
+  #   top_n(1000, variance) %>% 
+  #   pull(gene)
+  
+  ### a function to select genes based on variance
+  selectTopV <- function(x, selectNum) {
+    v <- apply(x, 1, var)
+    x <- x[order(-v),]
+    x <- x[1:selectNum,]
+    
+    return (x)
+  }
+  
+  #'******************************************************************************
+  #' A function to transform RNA-Seq data with VST in DESeq2 package
+  #' readCount: RNA-Seq rawcounts in a matrix or in a data frame form
+  #'            Rows are genes and columns are samples
+  #' filter_thresh: The function filters out genes that have at least one sample
+  #'                with counts larger than the 'filter_thresh' value
+  #'                e.g., if the 'filter_thresh' = 1, then it removes genes
+  #'                that have counts <= 1 across all the samples
+  #'                if 0, then there will be no filtering
+  #'******************************************************************************
+  normalizeRNASEQwithVST <- function(readCount, filter_thresh=1) {
+    
+    ### load library
+    if(!require(DESeq2, quietly = TRUE)) {
+      if(!requireNamespace("BiocManager", quietly = TRUE))
+        install.packages("BiocManager")
+      BiocManager::install("DESeq2")
+      require(DESeq2, quietly = TRUE)
+    }
+    
+    ### make a design matrix for DESeq2 data
+    condition <- data.frame(factor(rep("OneClass", ncol(readCount))))
+    
+    ### Data preparation for DESeq2 format
+    deSeqData <- DESeqDataSetFromMatrix(countData=readCount, colData=condition, design= ~0)
+    
+    if(filter_thresh > 0) {
+      ### Remove rubbish rows - this will decrease the number of rows
+      keep = apply(counts(deSeqData), 1, function(r){
+        return(sum(r > filter_thresh) > 0)
+      })
+      deSeqData <- deSeqData[keep,]
+    }
+    
+    ### VST
+    vsd <- varianceStabilizingTransformation(deSeqData)
+    transCnt <- data.frame(assay(vsd), check.names = FALSE)
+    
+    return (transCnt)
+    
+  }
+  
+  ### Get top 1000 highly variable genes
+  norm_cnt <- normalizeRNASEQwithVST(subset_Seurat_Obj@assays$RNA@counts, filter_thresh = 0)
+  top_hvg <- rownames(selectTopV(norm_cnt, 1000))
   
   ### Prepare data for random forest
-  dat_use <- t(GetAssayData(subset_Seurat_Obj, slot = "data")[top_hvg,])
+  dat_use <- t(norm_cnt[top_hvg,])
   
   ### for the curve 3, so the 3rd column
   ### slingshot_obj@lineages
   ### [3]: "d0" "d28" "d60"
   ### this is the best curve that we want to see
   ### PC1 values go right over time
-  dat_use_df <- cbind(slingPseudotime(slingshot_obj)[,3], dat_use)
+  dat_use_df <- cbind(slingPseudotime(slingshot_obj)[,1], dat_use)
   
   ### check the lineage 3 weight
   ### beeswarm plot
-  plot_df <- data.frame(Weight=slingPseudotime(slingshot_obj)[,3],
+  plot_df <- data.frame(PT=slingPseudotime(slingshot_obj)[,1],
                         Time=subset_Seurat_Obj@meta.data[rownames(slingPseudotime(slingshot_obj)),"Day"],
                         stringsAsFactors = FALSE, check.names = FALSE)
   plot_df <- plot_df[order(plot_df$Time),]
   # par(mfrow = c(1,1))
-  # plot(plot_df$Weight, col = cell_colors_clust[plot_df$Time], pch = 19)
-  ggplot(plot_df, aes_string(x="Time", y="Weight")) +
+  # plot(plot_df$PT, col = cell_colors_clust[plot_df$Time], pch = 19)
+  ggplot(plot_df, aes_string(x="Time", y="PT")) +
     theme_classic(base_size = 16) +
     geom_boxplot() +
     geom_beeswarm(aes_string(color="Time"), na.rm = TRUE) +
     stat_compare_means() +
-    labs(x = "", y = "Lineage Weight") +
+    labs(x = "", y = "Pseudotime") +
     theme(legend.position="right")
-  ggsave(file = paste0(outputDir, "Beeswarm_Lineage_Weights_per_Time.png"), width = 20, height = 12)
+  ggsave(file = paste0(outputDir, "Beeswarm_Pseudotime_MClust.png"), width = 15, height = 10)
   
   ### preprocessing
   colnames(dat_use_df)[1] <- "time"
   dat_use_df <- as.data.frame(dat_use_df[!is.na(dat_use_df[,1]),])
   dat_use_colnames <- colnames(dat_use_df)
   colnames(dat_use_df) <- make.names(colnames(dat_use_df))
-  
-  ### why dat_use values are all zero?
   
   
   ### split the data into training and testing cells
@@ -1144,14 +1155,14 @@ tfh_additional_analyses2 <- function(Seurat_RObj_path="./data/Ali_Tcell_combined
   png(paste0(outputDir, "PCA_Random_Forest_9_Genes.png"), width = 1500, height = 900, res = 120)
   par(mfrow = c(3, 3))
   for(i in seq_along(top_genes)) {
-    colors <- pal[cut(dat_use[,top_genes[i]], breaks = 100)]
-    plot(reducedDim(slingshot_obj), col = colors, 
+    colors <- pal[cut(as.numeric(norm_cnt[top_genes[i],]), breaks = 100)]
+    plot(pca_map, col = colors, 
          pch = 19, cex = 1, main = top_genes[i])
     ### legend
     lgd = rep(NA, 9)
-    lgd[c(1,5,9)] = c(signif(max(dat_use[,top_genes[i]]), 3),
-                       signif(mean(dat_use[,top_genes[i]]), 3),
-                       signif(min(dat_use[,top_genes[i]]), 3))
+    lgd[c(1,5,9)] = c(signif(max(as.numeric(norm_cnt[top_genes[i],])), 3),
+                      signif(mean(as.numeric(norm_cnt[top_genes[i],])), 3),
+                      signif(min(as.numeric(norm_cnt[top_genes[i],])), 3))
     legend("bottomleft",
            legend = lgd,
            fill = viridis(9, end = 0.95),
@@ -1159,9 +1170,78 @@ tfh_additional_analyses2 <- function(Seurat_RObj_path="./data/Ali_Tcell_combined
            bty = 'n',
            x.intersp = 0.5,
            y.intersp = 0.3,
-           cex = 0.7, text.font = 2)
+           cex = 1, text.font = 2)
     # lines(slingshot_obj, lwd = 2, col = 'black', type = 'lineages')
   }
   dev.off()
+  
+  
+  ### we do not expect all the cells moving over time
+  ### we just want to know if PC1 is associated with the maturation process
+  ### (d0, d5) -> (d12, d28) -> (d60, d80, d120, d180)
+  ### look at the heatmap - there are about 10 genes that contributed to the PC1
+  ### and only highly expressed in d5 & d12 time points
+  ### see the gene expression changes in the PCA - keep the trajectory graph
+  
+  ### the genes highly expressed in d5 & d12
+  d5_d12_genes <- c("AC004585.1", "IGFBP4", "GBP2", "LAG3",
+                    "PTMS", "ICOS", "GPRIN3", "CTLA4", "MAF")
+  
+  ### color palette
+  pal <- viridis(100, end = 0.95)
+  
+  ### draw a plot
+  png(paste0(outputDir, "PCA_Heatmap_9_Genes.png"), width = 1500, height = 900, res = 120)
+  par(mfrow = c(3, 3))
+  for(i in seq_along(d5_d12_genes)) {
+    colors <- pal[cut(as.numeric(norm_cnt[d5_d12_genes[i],]), breaks = 100)]
+    plot(pca_map, col = colors, 
+         pch = 19, cex = 1, main = d5_d12_genes[i])
+    ### legend
+    lgd = rep(NA, 9)
+    lgd[c(1,5,9)] = c(signif(max(as.numeric(norm_cnt[d5_d12_genes[i],])), 3),
+                      signif(mean(as.numeric(norm_cnt[d5_d12_genes[i],])), 3),
+                      signif(min(as.numeric(norm_cnt[d5_d12_genes[i],])), 3))
+    legend("bottomleft",
+           legend = lgd,
+           fill = viridis(9, end = 0.95),
+           border = NA,
+           bty = 'n',
+           x.intersp = 0.5,
+           y.intersp = 0.3,
+           cex = 1, text.font = 2)
+  }
+  dev.off()
+  
+  
+  #
+  ### do the same thing with the time points
+  #
+  
+  ### get slingshot object
+  slingshot_obj <- slingshot(pca_map, clusterLabels = subset_Seurat_Obj@meta.data$Day, 
+                             start.clus = "d0", end.clus = "d180", reducedDim = "PCA")
+  
+  ### get colors for the clustering result
+  cell_colors_clust <- cell_pal(levels(subset_Seurat_Obj@meta.data$Day), hue_pal())
+  
+  ### Trajectory inference
+  png(paste0(outputDir, "Trajectory_Inference_Time_PCA.png"), width = 2500, height = 1500, res = 200)
+  plot(reducedDim(slingshot_obj),
+       main="Trajectory Inference Based On Time (PCA)",
+       col = cell_colors_clust[subset_Seurat_Obj@meta.data$Day],
+       pch = 19, cex = 1)
+  lines(slingshot_obj, lwd = 2, type = "lineages", col = "black",
+        show.constraints = TRUE, constraints.col = cell_colors_clust)
+  legend("bottomleft", legend = names(cell_colors_clust), col = cell_colors_clust,
+         pch = 19)
+  dev.off()
+  
+  
+  ### seurat find clusters - among time points
+  
+  ### (d0, d5) -> (d12, d28) logFC (-) (+)
+  ### (d60, d80, d120, d180) logFC (+) (-)
+  
   
 }
