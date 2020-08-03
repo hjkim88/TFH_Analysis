@@ -295,11 +295,11 @@ clonal_tracking <- function(Seurat_RObj_path="./data/Ali_Tcell_combined_NEW.RDAT
                                             levels = c("d0", "d5", "d12", "d28", "d60", "d90", "d120", "d180"))
   
   ### draw the PCA & UMAP
-  DimPlot(subset_Seurat_Obj, reduction = "pca", split.by = "clone_id", group.by = "Day",
+  DimPlot(subset_Seurat_Obj, reduction = "pca", split.by = "clone_id", group.by = "Day", shape.by = "Tissue",
           ncol = 3, pt.size = 2) +
     labs(title = "PCA of the Top 9 Clones")
   ggsave(file = paste0(outputDir, "PCA_Top_9_Clones_TFH.png"), width = 20, height = 10, dpi = 300)
-  DimPlot(subset_Seurat_Obj, reduction = "umap", split.by = "clone_id", group.by = "Day",
+  DimPlot(subset_Seurat_Obj, reduction = "umap", split.by = "clone_id", group.by = "Day", shape.by = "Tissue",
           ncol = 3, pt.size = 2) +
     labs(title = "UMAP of the Top 9 Clones")
   ggsave(file = paste0(outputDir, "UMAP_Top_9_Clones_TFH.png"), width = 20, height = 10, dpi = 300)
