@@ -585,7 +585,7 @@ tfh_additional_analyses2 <- function(Seurat_RObj_path="./data/Ali_Tcell_combined
   subset_Seurat_Obj@meta.data <- subset_Seurat_Obj@meta.data[order(subset_Seurat_Obj@meta.data$Day),]
   
   ### rownames in the meta.data should be in the same order as colnames in the counts
-  Seurat_Obj@assays$RNA@counts <- Seurat_Obj@assays$RNA@counts[,rownames(subset_Seurat_Obj@meta.data)]
+  subset_Seurat_Obj@assays$RNA@counts <- Seurat_Obj@assays$RNA@counts[,rownames(subset_Seurat_Obj@meta.data)]
   
   ### run PCA
   subset_Seurat_Obj <- RunPCA(subset_Seurat_Obj, npcs = 10)
@@ -1011,11 +1011,11 @@ tfh_additional_analyses2 <- function(Seurat_RObj_path="./data/Ali_Tcell_combined
          pch = 19)
   dev.off()
   
-  ### apply machine learning (random forest) to make a classifier for
-  ### preditcting the time points from the gene expression
-  ### then extract genes that are highly contributed to the classifier
-  ### the genes should be the most important factors to predict the time points
-  ### which means they sensitively change along the time points
+  ### apply machine learning (random forest) to make a regression model for
+  ### predicting the pseudotime from the gene expression
+  ### then extract genes that are highly contributed to the model
+  ### the genes should be the most important factors to predict the pseudotime
+  ### which means they sensitively change along the pseudotime
   
   ### Get top 1000 highly variable genes
   # top_hvg <- HVFInfo(subset_Seurat_Obj) %>% 
@@ -1141,7 +1141,7 @@ tfh_additional_analyses2 <- function(Seurat_RObj_path="./data/Ali_Tcell_combined
                                             met$.metric[1], ": ", signif(met$.estimate[1], 4), " ",
                                             met$.metric[2], ": ", signif(met$.estimate[2], 2), " ",
                                             met$.metric[3], ": ", signif(met$.estimate[3], 4)),
-       xlab = "Original_Lineage_Weights", ylab = "Predicted_Lineage_Weights")
+       xlab = "Original_Pseudotime", ylab = "Predicted_Pseudotime")
   dev.off()
   # summary(dat_use_df$time)
   
