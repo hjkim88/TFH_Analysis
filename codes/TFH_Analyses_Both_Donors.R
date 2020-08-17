@@ -64,6 +64,12 @@ tfh_analyses_both_donors <- function(Seurat_RObj_path="Z:/ResearchHome/ResearchH
   ### load Stefan's t-cell object
   stefan_tcell_seurat_obj <- readRDS(Seurat_RObj_path)
   
+  ### rownames in the meta.data should be in the same order as colnames in the counts
+  Seurat_Obj@meta.data <- Seurat_Obj@meta.data[colnames(Seurat_Obj@assays$RNA@counts),]
+  
+  
+  
+  
   
   
   
