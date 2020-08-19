@@ -1807,4 +1807,33 @@ tfh_analyses_both_donors <- function(Seurat_RObj_path="./data/SS_Tfh_BothDonors/
     
   }
   
+  ### get shared genes between the two donors that contributed to the PC1 a lot in each
+  gene_list1 <- read.xlsx2(file = "./results/v2/321-04/321-04_PCA_Contributions.xlsx",
+                           sheetIndex = 1)
+  gene_list2 <- read.xlsx2(file = "./results/v2/321-05/321-05_PCA_Contributions.xlsx",
+                           sheetIndex = 1)
+  shared_genes <- intersect(gene_list1$Gene[1:100], gene_list2$Gene[1:100])
+  write.table(data.frame(shared_genes), file = "./results/v2/62_Shared_PC1_Genes.txt",
+              sep = "\t", row.names = FALSE, col.names = FALSE, quote = FALSE)
+  
+  ### pathway analysis on the shared genes
+  pathway_result_GO <- pathwayAnalysis_CP(geneList = mapIds(org.Hs.eg.db,
+                                                            shared_genes,
+                                                            "ENTREZID", "SYMBOL"),
+                                          org = "human", database = "GO",
+                                          title = "Pathway_Results_62_Shared_PC1_Genes",
+                                          displayNum = 50, imgPrint = TRUE,
+                                          dir = "./results/v2/")
+  pathway_result_KEGG <- pathwayAnalysis_CP(geneList = mapIds(org.Hs.eg.db,
+                                                              shared_genes,
+                                                              "ENTREZID", "SYMBOL"),
+                                            org = "human", database = "KEGG",
+                                            title = "Pathway_Results_62_Shared_PC1_Genes",
+                                            displayNum = 50, imgPrint = TRUE,
+                                            dir = "./results/v2/")
+  write.xlsx2(pathway_result_GO, file = "./results/v2/GO_Pathway_Results_62_Shared_PC1_Genes.xlsx",
+              row.names = FALSE, sheetName = paste0("GO_Results"))
+  write.xlsx2(pathway_result_KEGG, file = "./results/v2/KEGG_Pathway_Results_62_Shared_PC1_Genes.xlsx",
+              row.names = FALSE, sheetName = paste0("KEGG_Results"))
+  
 }
