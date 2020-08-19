@@ -1403,6 +1403,18 @@ tfh_analyses_both_donors <- function(Seurat_RObj_path="./data/SS_Tfh_BothDonors/
     ### PCA & UMAP with the top 9 clones from the TFH result
     #
     
+    ### run PCA
+    subset_Seurat_Obj <- RunPCA(subset_Seurat_Obj, npcs = 10)
+    
+    ### run UMAP
+    subset_Seurat_Obj <- RunUMAP(subset_Seurat_Obj, dims = 1:5)
+    
+    ### if the donor is 321-05, flip the sign of the PC1 and PC2 for consistency with the previous results
+    if(donor == "321-05") {
+      subset_Seurat_Obj@reductions$pca@cell.embeddings <- -subset_Seurat_Obj@reductions$pca@cell.embeddings
+      subset_Seurat_Obj@reductions$pca@feature.loadings <- -subset_Seurat_Obj@reductions$pca@feature.loadings
+    }
+    
     ### check whether the orders are the same
     print(identical(names(Idents(object = subset_Seurat_Obj)), rownames(subset_Seurat_Obj@meta.data)))
     
@@ -1506,9 +1518,6 @@ tfh_analyses_both_donors <- function(Seurat_RObj_path="./data/SS_Tfh_BothDonors/
     }
     
     
-    ### run PCA
-    subset_Seurat_Obj <- RunPCA(subset_Seurat_Obj, npcs = 10)
-    
     ### PCA plot
     g <- multiReducPlot(x = subset_Seurat_Obj@reductions$pca@cell.embeddings[,"PC_1"],
                         y = subset_Seurat_Obj@reductions$pca@cell.embeddings[,"PC_2"],
@@ -1517,9 +1526,6 @@ tfh_analyses_both_donors <- function(Seurat_RObj_path="./data/SS_Tfh_BothDonors/
                         type = "PCA",
                         fName = paste0(donor, "_PCA_TFH"), isPrint = TRUE, isConvex = TRUE)
     ggsave(file = paste0(outputDir2, donor, "_PCA_TFH.png"), g, width = 20, height = 10, dpi = 300)
-    
-    ### run UMAP
-    subset_Seurat_Obj <- RunUMAP(subset_Seurat_Obj, dims = 1:5)
     
     ### UMAP plot
     g <- multiReducPlot(x = subset_Seurat_Obj@reductions$umap@cell.embeddings[,"UMAP_1"],
@@ -1759,9 +1765,10 @@ tfh_analyses_both_donors <- function(Seurat_RObj_path="./data/SS_Tfh_BothDonors/
                           color = cell_colors_clust,
                           title = paste0(donor, "_Trajectory_Inference_3D_PCA_Mclust"),
                           print = TRUE,
-                          outputDir = outputDir2,
+                          outputDir = paste0(outputDir2, "Slingshot_3D/"),
                           width = 1200,
                           height = 800)
+    rgl.close()
     
     
     #
@@ -1796,6 +1803,7 @@ tfh_analyses_both_donors <- function(Seurat_RObj_path="./data/SS_Tfh_BothDonors/
                           outputDir = paste0(outputDir2, "Slingshot_3D/"),
                           width = 1200,
                           height = 800)
+    rgl.close()
     
   }
   
