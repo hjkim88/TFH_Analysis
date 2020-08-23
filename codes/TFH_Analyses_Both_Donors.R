@@ -1583,7 +1583,7 @@ tfh_analyses_both_donors <- function(Seurat_RObj_path="./data/SS_Tfh_BothDonors/
         }
       }
       rgl::points3d(centers[clusters %in% clus2include, dims],
-                    size = size/2, col = col2)
+                    size = size/2, col = col2[clusters[clusters %in% clus2include]])
       rgl::points3d(centers[clusters %in% clus2include, dims],
                     size = size, col = col[1])
     }
