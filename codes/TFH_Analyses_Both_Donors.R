@@ -14,11 +14,11 @@
 #   Example
 #               > source("The_directory_of_TFH_Analyses_Both_Donors.R/TFH_Analyses_Both_Donors.R")
 #               > tfh_analyses_both_donors(Seurat_RObj_path="./data/SS_Tfh_BothDonors/BothDonors_Tfh_matched_clones_v2.rds",
-#                                          outputDir="./results/v2/")
+#                                          outputDir="./results/v3/")
 ###
 
 tfh_analyses_both_donors <- function(Seurat_RObj_path="./data/SS_Tfh_BothDonors/BothDonors_Tfh_matched_clones_v2.rds",
-                                     outputDir="./results/v2/") {
+                                     outputDir="./results/v3/") {
   
   ### load libraries
   if(!require(Seurat, quietly = TRUE)) {
@@ -213,7 +213,8 @@ tfh_analyses_both_donors <- function(Seurat_RObj_path="./data/SS_Tfh_BothDonors/
                 theme_classic(base_size = 16) + geom_bar(aes(fill = p.adjust), stat="identity") + coord_flip() +
                 scale_x_discrete(limits = rev(description)) +
                 guides(fill = guide_colorbar(ticks=FALSE, title="P.Val", barheight=10)) +
-                ggtitle(paste0("KEGG ", title))
+                ggtitle(paste0("KEGG ", title)) +
+                theme(axis.text = element_text(size = 25))
               
               png(paste0(dir, "kegg_", title, "_CB.png"), width = 2000, height = 1000)
               print(p[[1]])
@@ -256,7 +257,8 @@ tfh_analyses_both_donors <- function(Seurat_RObj_path="./data/SS_Tfh_BothDonors/
                 theme_classic(base_size = 16) + geom_bar(aes(fill = p.adjust), stat="identity") + coord_flip() +
                 scale_x_discrete(limits = rev(description)) +
                 guides(fill = guide_colorbar(ticks=FALSE, title="P.Val", barheight=10)) +
-                ggtitle(paste0("GO ", title))
+                ggtitle(paste0("GO ", title)) +
+                theme(axis.text = element_text(size = 25))
               
               png(paste0(dir, "go_", title, "_CB.png"), width = 2000, height = 1000)
               print(p[[2]])
@@ -1049,6 +1051,11 @@ tfh_analyses_both_donors <- function(Seurat_RObj_path="./data/SS_Tfh_BothDonors/
             points(centers[clusters %in% const, dims,
                            drop=FALSE], cex = cex / 2,
                    col = constraints.col[const], pch = 16)
+            text(x = centers[clusters %in% const, dims[1]]+0.3,
+                 y = centers[clusters %in% const, dims[2]]+0.8,
+                 labels = const,
+                 cex = cex / 3,
+                 col = "black")
           }
         }
       }
@@ -1124,7 +1131,8 @@ tfh_analyses_both_donors <- function(Seurat_RObj_path="./data/SS_Tfh_BothDonors/
               diag.panel = NULL, text.panel = textPanel,
               label.pos = 0.5 + has.diag/3, line.main = 3,
               cex.labels = NULL, font.labels = 1,
-              row1attop = TRUE, gap = 1) {
+              row1attop = TRUE, gap = 1,
+              xlim=NULL, ylim=NULL) {
       #####
       lp.sling <- lower.panel
       up.sling <- upper.panel
@@ -1279,9 +1287,24 @@ tfh_analyses_both_donors <- function(Seurat_RObj_path="./data/SS_Tfh_BothDonors/
       for (i in if(row1attop) verInd else rev(verInd))
         for (j in horInd) {
           l <- paste0(ifelse(xl[j], "x", ""), ifelse(yl[i], "y", ""))
-          localPlot(x[, j], x[, i], xlab = "", ylab = "",
-                    axes = FALSE, type = "n", ..., log = l,
-                    xlim = plot.ranges[,j], ylim = plot.ranges[,i])
+          
+          if(is.null(xlim) & !is.null(ylim))
+            localPlot(x[, j], x[, i], xlab = "", ylab = "",
+                      axes = FALSE, type = "n", ..., log = l,
+                      xlim = plot.ranges[,j], ylim=ylim)
+          else if(!is.null(xlim) & is.null(ylim))
+            localPlot(x[, j], x[, i], xlab = "", ylab = "",
+                      axes = FALSE, type = "n", ..., log = l,
+                      xlim = xlim, ylim = plot.ranges[,i])
+          else if(!is.null(xlim) & !is.null(ylim))
+            localPlot(x[, j], x[, i], xlab = "", ylab = "",
+                      axes = FALSE, type = "n", ..., log = l,
+                      xlim = xlim, ylim=ylim)
+          else
+            localPlot(x[, j], x[, i], xlab = "", ylab = "",
+                      axes = FALSE, type = "n", ..., log = l,
+                      xlim = plot.ranges[,j], ylim = plot.ranges[,i])
+          
           if(i == j || (i < j && has.lower) || (i > j && has.upper) ) {
             box()
             if(i == 1  && (!(j %% 2L) || !has.upper || !has.lower ))
@@ -1993,6 +2016,140 @@ tfh_analyses_both_donors <- function(Seurat_RObj_path="./data/SS_Tfh_BothDonors/
       scale_y_continuous(expand = c(0, 0), limits = c(0, NA))
     ggsave(file = paste0(outputDir2, donor, "_TFH_Clonal_Tracing.png"), width = 18, height = 9, dpi = 300)
     
+    ### separate the LN and PB cells
+    clone_summary_table_LNPB <- data.frame(sapply(clone_summary_table, function(x) c(rbind(x, x, x))),
+                                           stringsAsFactors = FALSE, check.names = FALSE)
+    clone_summary_table_LNPB <- data.frame(clone_summary_table_LNPB[,c("clone_id", "cdr_ab")],
+                                           cell_type=rep(c("FNA", "PBMC", "ALL"), nrow(clone_summary_table)),
+                                           sapply(clone_summary_table_LNPB[,c(time_points, "total_count")],
+                                                  as.numeric),
+                                           stringsAsFactors = FALSE, check.names = FALSE)
+    rownames(clone_summary_table_LNPB) <- paste(c(rbind(rownames(clone_summary_table),
+                                                        rownames(clone_summary_table),
+                                                        rownames(clone_summary_table))),
+                                                c("FNA", "PBMC", "ALL"), sep = "_")
+    
+    ### fill out the new table
+    for(i in 1:nrow(clone_summary_table_LNPB)) {
+      if(clone_summary_table_LNPB$cell_type[i] != "ALL") {
+        clone_idx <- intersect(which(subset_Seurat_Obj@meta.data$clone_id == clone_summary_table_LNPB$clone_id[i]),
+                               which(subset_Seurat_Obj@meta.data$Tissue == clone_summary_table_LNPB$cell_type[i]))
+        for(tp in time_points) {
+          clone_summary_table_LNPB[i,tp] <- length(intersect(clone_idx, tp_indicies[[tp]]))
+        }
+        clone_summary_table_LNPB$total_count[i] <- sum(clone_summary_table_LNPB[i,time_points])
+      }
+    }
+    
+    ### pb-associated table
+    pb_idx <- intersect(which(clone_summary_table_LNPB$cell_type == "PBMC"),
+                        which(clone_summary_table_LNPB$total_count > 0))
+    if(length(pb_idx) > 0) {
+      clone_summary_table_PB <- clone_summary_table_LNPB[c(rbind(pb_idx-1,
+                                                                 pb_idx,
+                                                                 pb_idx+1)),]
+
+      ### only keep lineages from the pb-associated table
+      line_idx <- intersect(which(clone_summary_table_PB$total_count > 1),
+                            which(clone_summary_table_PB$cell_type == "ALL"))
+      if(length(line_idx) > 0) {
+        lineage_table_PB <- clone_summary_table_PB[c(rbind(line_idx-2,
+                                                           line_idx-1,
+                                                           line_idx)),]
+        
+        ### save it in Excel file
+        write.xlsx2(lineage_table_PB, file = paste0(outputDir2, donor, "_PB_Associated_Lineages.xlsx"),
+                    sheetName = "PB_Lineages", row.names = FALSE)
+        
+        ### get the number of cells for each group
+        ln_cellNum_subset <- sapply(time_points, function(x) {
+          return(length(intersect(which(subset_Seurat_Obj@meta.data$Tissue == "FNA"),
+                                  which(subset_Seurat_Obj@meta.data$Day == x))))
+        })
+        pb_cellNum_subset <- sapply(time_points, function(x) {
+          return(length(intersect(which(subset_Seurat_Obj@meta.data$Tissue == "PBMC"),
+                                  which(subset_Seurat_Obj@meta.data$Day == x))))
+        })
+        ln_cellNum_all <- sapply(time_points, function(x) {
+          return(length(intersect(intersect(which(Seurat_Obj@meta.data$Tissue == "FNA"),
+                                            which(Seurat_Obj@meta.data$Day == x)),
+                                  which(!is.na(Seurat_Obj@meta.data$match.cdr)))))
+        })
+        pb_cellNum_all <- sapply(time_points, function(x) {
+          return(length(intersect(intersect(which(Seurat_Obj@meta.data$Tissue == "PBMC"),
+                                            which(Seurat_Obj@meta.data$Day == x)),
+                                  which(!is.na(Seurat_Obj@meta.data$match.cdr)))))
+        })
+        
+        ### Alluvial plot - visualization of the lineage tracing (PB-associated lineages only)
+        
+        ### get an input data frame for the alluvial plot
+        plot_df <- plot_df[which(plot_df$Clone %in% unique(lineage_table_PB$clone_id)),]
+        
+        ### add the number of PB cells
+        plot_df$PB_Num <- ""
+        for(i in 1:nrow(plot_df)) {
+          num <- lineage_table_PB[paste0(plot_df$Clone[i], "_PB"),as.character(plot_df$Time[i])]
+          if(num > 0) {
+            plot_df$PB_Num[i] <- num
+          }
+        }
+        
+        # ### seprate PB from the combined row
+        # plot_df2 <- plot_df
+        # plot_df2$Tissue <- "LN"
+        # p_idx <- which(plot_df2$PB_Num != "")
+        # temp <- NULL
+        # for(idx in p_idx) {
+        #   if(plot_df2$Clone_Size[idx] == 1) {
+        #     plot_df2$Tissue[idx] <- "PB"
+        #   } else {
+        #     if(is.null(temp)) {
+        #       temp <- plot_df2[idx,,drop=FALSE]
+        #     } else {
+        #       temp <- rbind(temp, plot_df2[idx,])
+        #     }
+        #     plot_df2$Clone_Size[idx] <- plot_df2$Clone_Size[idx] - as.numeric(plot_df2$PB_Num[idx])
+        #     temp$Clone_Size[nrow(temp)] <- as.numeric(plot_df2$PB_Num[idx])
+        #     temp$Tissue[nrow(temp)] <- "PB"
+        #   }
+        # }
+        # plot_df2 <- rbind(plot_df2, temp)
+        
+        ### draw the alluvial plot
+        ggplot(plot_df,
+               aes(x = Time, stratum = Clone, alluvium = Clone,
+                   y = Clone_Size,
+                   fill = CDR3, label = PB_Num)) +
+          ggtitle("Clonal Tracing (PB-Associated Lineages)") +
+          geom_stratum(alpha = 1) +
+          geom_text(stat = "stratum", size = 3, col = "black") +
+          geom_flow() +
+          rotate_x_text(90) +
+          theme_pubr(legend = "none") +
+          theme(axis.title.x = element_blank()) +
+          theme_cleveland2() +
+          scale_fill_viridis(discrete = T) +
+          scale_y_continuous(expand = c(0, 0), limits = c(0, NA))
+        ggsave(file = paste0(outputDir2, donor, "_Clonal_Tracing_PB.png"), width = 18, height = 9, dpi = 300)
+        
+        # ### draw the alluvial plot
+        # ggplot(plot_df2,
+        #        aes(x = Time, stratum = Tissue, alluvium = Clone,
+        #            y = Clone_Size)) +
+        #   ggtitle("Clonal Tracing (PB-Associated Lineages)") +
+        #   geom_stratum(alpha = 1) +
+        #   geom_text(stat = "stratum", size = 3, col = "black") +
+        #   geom_flow() +
+        #   rotate_x_text(90) +
+        #   theme_pubr(legend = "none") +
+        #   theme(axis.title.x = element_blank()) +
+        #   theme_cleveland2() +
+        #   scale_fill_viridis(discrete = T) +
+        #   scale_y_continuous(expand = c(0, 0), limits = c(0, NA))
+        # ggsave(file = paste0(outputDir2, donor, "_Clonal_Tracing_PB.png"), width = 18, height = 9, dpi = 300)
+      }
+    }
     
     #
     ### PCA & UMAP with the top 9 clones from the TFH result
@@ -2083,14 +2240,14 @@ tfh_analyses_both_donors <- function(Seurat_RObj_path="./data/SS_Tfh_BothDonors/
                   sheetName = paste0(clone, "_vs_Others"), row.names = FALSE)
       
       ### pathway analysis
-      if(length(which(de_result$FDR < de_signif_thresh)) > 0) {
+      if(length(which(de_result$FDR < de_signif_thresh)) > 1) {
         pathway_result_GO <- pathwayAnalysis_CP(geneList = mapIds(org.Hs.eg.db,
                                                                   de_result[which(de_result$FDR < de_signif_thresh),
                                                                             "Gene_Symbol"],
                                                                   "ENTREZID", "SYMBOL"),
                                                 org = "human", database = "GO",
                                                 title = paste0(donor, "_Pathway_Results_", clone, "_vs_Others"),
-                                                displayNum = 50, imgPrint = TRUE,
+                                                displayNum = 30, imgPrint = TRUE,
                                                 dir = paste0(outputDir4))
         pathway_result_KEGG <- pathwayAnalysis_CP(geneList = mapIds(org.Hs.eg.db,
                                                                     de_result[which(de_result$FDR < de_signif_thresh),
@@ -2098,7 +2255,7 @@ tfh_analyses_both_donors <- function(Seurat_RObj_path="./data/SS_Tfh_BothDonors/
                                                                     "ENTREZID", "SYMBOL"),
                                                   org = "human", database = "KEGG",
                                                   title = paste0(donor, "_Pathway_Results_", clone, "_vs_Others"),
-                                                  displayNum = 50, imgPrint = TRUE,
+                                                  displayNum = 30, imgPrint = TRUE,
                                                   dir = paste0(outputDir4))
         if(!is.null(pathway_result_GO) && nrow(pathway_result_GO) > 0) {
           write.xlsx2(pathway_result_GO, file = paste0(outputDir4, donor, "_GO_pathway_results_", clone, "_vs_Others.xlsx"),
@@ -2155,14 +2312,14 @@ tfh_analyses_both_donors <- function(Seurat_RObj_path="./data/SS_Tfh_BothDonors/
                                                               "ENTREZID", "SYMBOL"),
                                             org = "human", database = "GO",
                                             title = paste0(donor, "_Pathway_Results_", length(important_genes), "_PC1_Genes_", contb_threshold),
-                                            displayNum = 50, imgPrint = TRUE,
+                                            displayNum = 30, imgPrint = TRUE,
                                             dir = paste0(outputDir2))
     pathway_result_KEGG <- pathwayAnalysis_CP(geneList = mapIds(org.Hs.eg.db,
                                                                 important_genes,
                                                                 "ENTREZID", "SYMBOL"),
                                               org = "human", database = "KEGG",
                                               title = paste0(donor, "_Pathway_Results_", length(important_genes), "_PC1_Genes_", contb_threshold),
-                                              displayNum = 50, imgPrint = TRUE,
+                                              displayNum = 30, imgPrint = TRUE,
                                               dir = paste0(outputDir2))
     write.xlsx2(pathway_result_GO, file = paste0(outputDir2, donor, "_GO_pathway_results_", length(important_genes), "_PC1_Genes_", contb_threshold, ".xlsx"),
                 row.names = FALSE, sheetName = paste0("GO_Results"))
@@ -2348,7 +2505,7 @@ tfh_analyses_both_donors <- function(Seurat_RObj_path="./data/SS_Tfh_BothDonors/
     plot(pca_map,
          main=paste(donor, "Trajectory Inference Based On Mclust Clusters (PCA)"),
          col = cell_colors_clust[as.character(subset_Seurat_Obj@meta.data$mclust_clusters)],
-         pch = 19, cex = 1)
+         pch = 19, cex = 1.5)
     lines(slingshot_obj, lwd = 2, type = "lineages", col = "black",
           show.constraints = TRUE, constraints.col = cell_colors_clust)
     legend("bottomleft", legend = names(cell_colors_clust), col = cell_colors_clust,
@@ -2386,13 +2543,14 @@ tfh_analyses_both_donors <- function(Seurat_RObj_path="./data/SS_Tfh_BothDonors/
                                reducedDim = "PCA")
     
     ### get colors for the clustering result
-    cell_colors_clust <- cell_pal(levels(subset_Seurat_Obj@meta.data$Day), hue_pal())
+    cell_colors_clust <- cell_pal(intersect(levels(subset_Seurat_Obj@meta.data$Day),
+                                            unique(subset_Seurat_Obj@meta.data$Day)), hue_pal())
     
     ### Trajectory inference
     png(paste0(outputDir2, donor, "_Trajectory_Inference_Time_PCA.png"), width = 2500, height = 1500, res = 200)
     plot(reducedDim(slingshot_obj),
          main=paste(donor, "Trajectory Inference Based On Time (PCA)"),
-         col = cell_colors_clust[subset_Seurat_Obj@meta.data$Day],
+         col = cell_colors_clust[as.character(subset_Seurat_Obj@meta.data$Day)],
          pch = 19, cex = 1)
     lines(slingshot_obj, lwd = 2, type = "lineages", col = "black",
           show.constraints = TRUE, constraints.col = cell_colors_clust)
@@ -2423,12 +2581,12 @@ tfh_analyses_both_donors <- function(Seurat_RObj_path="./data/SS_Tfh_BothDonors/
   }
   
   ### get shared genes between the two donors that contributed to the PC1 a lot in each
-  gene_list1 <- read.xlsx2(file = "./results/v2/321-04/321-04_PCA_Contributions.xlsx",
+  gene_list1 <- read.xlsx2(file = "./results/v3/321-04/321-04_PCA_Contributions.xlsx",
                            sheetIndex = 1)
-  gene_list2 <- read.xlsx2(file = "./results/v2/321-05/321-05_PCA_Contributions.xlsx",
+  gene_list2 <- read.xlsx2(file = "./results/v3/321-05/321-05_PCA_Contributions.xlsx",
                            sheetIndex = 1)
   shared_genes <- intersect(gene_list1$Gene[1:100], gene_list2$Gene[1:100])
-  write.table(data.frame(shared_genes), file = "./results/v2/62_Shared_PC1_Genes.txt",
+  write.table(data.frame(shared_genes), file = "./results/v3/62_Shared_PC1_Genes.txt",
               sep = "\t", row.names = FALSE, col.names = FALSE, quote = FALSE)
   
   ### pathway analysis on the shared genes
@@ -2437,18 +2595,18 @@ tfh_analyses_both_donors <- function(Seurat_RObj_path="./data/SS_Tfh_BothDonors/
                                                             "ENTREZID", "SYMBOL"),
                                           org = "human", database = "GO",
                                           title = "Pathway_Results_62_Shared_PC1_Genes",
-                                          displayNum = 50, imgPrint = TRUE,
-                                          dir = "./results/v2/")
+                                          displayNum = 30, imgPrint = TRUE,
+                                          dir = "./results/v3/")
   pathway_result_KEGG <- pathwayAnalysis_CP(geneList = mapIds(org.Hs.eg.db,
                                                               shared_genes,
                                                               "ENTREZID", "SYMBOL"),
                                             org = "human", database = "KEGG",
                                             title = "Pathway_Results_62_Shared_PC1_Genes",
-                                            displayNum = 50, imgPrint = TRUE,
-                                            dir = "./results/v2/")
-  write.xlsx2(pathway_result_GO, file = "./results/v2/GO_Pathway_Results_62_Shared_PC1_Genes.xlsx",
+                                            displayNum = 30, imgPrint = TRUE,
+                                            dir = "./results/v3/")
+  write.xlsx2(pathway_result_GO, file = "./results/v3/GO_Pathway_Results_62_Shared_PC1_Genes.xlsx",
               row.names = FALSE, sheetName = paste0("GO_Results"))
-  write.xlsx2(pathway_result_KEGG, file = "./results/v2/KEGG_Pathway_Results_62_Shared_PC1_Genes.xlsx",
+  write.xlsx2(pathway_result_KEGG, file = "./results/v3/KEGG_Pathway_Results_62_Shared_PC1_Genes.xlsx",
               row.names = FALSE, sheetName = paste0("KEGG_Results"))
   
   
@@ -2465,6 +2623,7 @@ tfh_analyses_both_donors <- function(Seurat_RObj_path="./data/SS_Tfh_BothDonors/
   
   ### get important genes from the previous result
   old_important_genes <- rownames(gene_set)[which(gene_set[,"PC_1"] > 1)]
+  old_important_genes <- old_important_genes[order(old_important_genes)]
   
   ### hierarchical clustering functions
   dist.spear <- function(x) as.dist(1-cor(t(x), method = "spearman"))
@@ -2525,7 +2684,7 @@ tfh_analyses_both_donors <- function(Seurat_RObj_path="./data/SS_Tfh_BothDonors/
                                 alternative = "greater",
                                 permutation = 10000,
                                 fileName = paste0("Rank_Comparison_PC1_Genes_(Old_321-05)_vs_(New_", donor, ")"),
-                                printPath = "./results/v2/",
+                                printPath = "./results/v3/",
                                 width = 24,
                                 height = 12)
     
@@ -2549,7 +2708,7 @@ tfh_analyses_both_donors <- function(Seurat_RObj_path="./data/SS_Tfh_BothDonors/
     names(colors) <- uniqueV
     
     ### heatmap
-    png(paste0("./results/v2/Old_Genes_in_New_", donor, "_Heatmap.png"), width = 2000, height = 1000)
+    png(paste0("./results/v3/Old_Genes_in_New_", donor, "_Heatmap.png"), width = 2000, height = 1000)
     par(oma=c(0,0,2,6))
     heatmap.3(as.matrix(heatmap_mat_scaled), main = paste0("Old_PC1_Genes_Heatmap_(",
                                                            nrow(heatmap_mat_scaled), " Genes x ",
@@ -2558,7 +2717,7 @@ tfh_analyses_both_donors <- function(Seurat_RObj_path="./data/SS_Tfh_BothDonors/
               scale="none", key=T, keysize=0.8, density.info="density",
               dendrogram = "none", trace = "none",
               labRow = rownames(heatmap_mat_scaled), labCol = FALSE,
-              Rowv = TRUE, Colv = FALSE,
+              Rowv = FALSE, Colv = FALSE,
               distfun=dist.spear, hclustfun=hclust.ave,
               ColSideColors = cbind(colors[as.character(subset_Seurat_Obj@meta.data$Day)]),
               cexRow = 2, cexCol = 2, na.rm = TRUE)
