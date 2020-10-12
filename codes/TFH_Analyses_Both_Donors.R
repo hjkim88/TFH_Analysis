@@ -1916,6 +1916,20 @@ tfh_analyses_both_donors <- function(Seurat_RObj_path="./data/SS_Tfh_BothDonors/
     
   }
   
+  ### a function for drawing network plot - PB-associated lineage
+  draw_lineage_network <- function(lineage_table,
+                                   print_path="./lineage_network.png") {
+    
+    ### load library
+    if(!require(igraph, quietly = TRUE)) {
+      install.packages("igraph")
+      require(igraph, quietly = TRUE)
+    }
+    
+    
+    
+  }
+  
   ### for each donor run the same analyses
   for(donor in unique(Seurat_Obj@meta.data$Donor)) {
     
