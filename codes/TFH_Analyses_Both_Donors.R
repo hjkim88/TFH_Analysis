@@ -1926,9 +1926,33 @@ tfh_analyses_both_donors <- function(Seurat_RObj_path="./data/SS_Tfh_BothDonors/
       require(igraph, quietly = TRUE)
     }
     
-    ### first build an adjacency matrix
+    ### remove the ALL rows
+    lineage_table <- lineage_table[which(lineage_table$cell_type != "ALL"),]
+    
+    ### get time points
+    time_points <- colnames(lineage_table)[4:(ncol(lineage_table)-1)]
+    
+    ### set node names
+    node_names <- NULL
+    for(i in 1:nrow(lineage_table)) {
+      for(tp in time_points) {
+        if(lineage_table[i,tp] > 0) {
+          node_names <- c(node_names, paste0(tp, "_", rownames(lineage_table)[i]))
+        }
+      }
+    }
+    
+    ### make adjacency matrix for network
     ### rows: outbound
     ### columns: inbound
+    adj_mat <- matrix(0, length(node_names), length(node_names))
+    rownames(adj_mat) <- node_names
+    colnames(adj_mat) <- node_names
+    
+    
+    
+    
+    
     
     adjm <- matrix(sample(0:1, 100, replace=TRUE, prob=c(0.9,0.1)), nc=10)
     g1 <- graph_from_adjacency_matrix( adjm )
