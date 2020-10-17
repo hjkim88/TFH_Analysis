@@ -1949,24 +1949,38 @@ tfh_analyses_both_donors <- function(Seurat_RObj_path="./data/SS_Tfh_BothDonors/
     rownames(adj_mat) <- node_names
     colnames(adj_mat) <- node_names
     
+    for(r in rownames(adj_mat)) {
+      for(c in colnames(adj_mat)) {
+        ### outbound
+        temp <- strsplit(r, split = "_", fixed = TRUE)[[1]]
+        outbound_clone <- lineage_table[paste(temp[-1], collapse = "_"),"clone_id"]
+        outbound_day <- temp[1]
+        outbound_tissue <- lineage_table[paste(temp[-1], collapse = "_"),"cell_type"]
+        outbound_freq <- lineage_table[paste(temp[-1], collapse = "_"),outbound_day]
+        
+        ### inbound
+        temp <- strsplit(c, split = "_", fixed = TRUE)[[1]]
+        inbound_clone <- lineage_table[paste(temp[-1], collapse = "_"),"clone_id"]
+        inbound_day <- strsplit(c, split = "_", fixed = TRUE)[[1]][1]
+        inbound_tissue <- lineage_table[paste(temp[-1], collapse = "_"),"cell_type"]
+        inbound_freq <- lineage_table[paste(temp[-1], collapse = "_"),inbound_day]
+        
+        ### fill out the table
+        if((outbound_freq > 0) && (inbound_freq > 0)) {
+          adj_mat[r,c] <- inbound_freq
+        }
+      }
+    }
     
+    g <- graph_from_adjacency_matrix(adj_mat, mode = "undirected", weighted = TRUE)
+    coords <- layout_(g, as_star())
+    plot(g, layout = coords)
     
-    
-    
-    
-    adjm <- matrix(sample(0:1, 100, replace=TRUE, prob=c(0.9,0.1)), nc=10)
-    g1 <- graph_from_adjacency_matrix( adjm )
+
     adjm <- matrix(sample(0:5, 100, replace=TRUE,
                           prob=c(0.9,0.02,0.02,0.02,0.02,0.02)), nc=10)
     g2 <- graph_from_adjacency_matrix(adjm, weighted=TRUE)
     E(g2)$weight
-    
-    ## various modes for weighted graphs, with some tests
-    nzs <- function(x) sort(x [x!=0])
-    adjm <- matrix(runif(100), 10)
-    adjm[ adjm<0.5 ] <- 0
-    g3 <- graph_from_adjacency_matrix((adjm + t(adjm))/2, weighted=TRUE,
-                                      mode="undirected")
     
     
     
