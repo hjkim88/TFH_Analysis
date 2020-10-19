@@ -1925,6 +1925,12 @@ tfh_analyses_both_donors <- function(Seurat_RObj_path="./data/SS_Tfh_BothDonors/
       install.packages("igraph")
       require(igraph, quietly = TRUE)
     }
+    if(!require(RedeR, quietly = TRUE)) {
+      if (!requireNamespace("BiocManager", quietly = TRUE))
+        install.packages("BiocManager")
+      BiocManager::install("RedeR")
+      require(RedeR, quietly = TRUE)
+    }
     
     ### remove the ALL rows
     lineage_table <- lineage_table[which(lineage_table$cell_type != "ALL"),]
@@ -1976,7 +1982,110 @@ tfh_analyses_both_donors <- function(Seurat_RObj_path="./data/SS_Tfh_BothDonors/
     coords <- layout_(g, as_star())
     plot(g, layout = coords)
     
-
+    
+    
+    
+    
+    
+    ### network graph
+    ### need to save figures manually
+    ### load library
+    if(!require(viper)) {
+      source("https://bioconductor.org/biocLite.R")
+      biocLite("viper")
+      library(viper)
+    }
+    if(!require(RedeR)) {
+      source("https://bioconductor.org/biocLite.R")
+      biocLite("RedeR")
+      library(RedeR)
+    }
+    if(!require(igraph)) {
+      source("https://bioconductor.org/biocLite.R")
+      biocLite("igraph")
+      library(igraph)
+    }
+    
+    ### set edge threshold
+    edgeThreshold <- as.numeric(params[[8]])
+    
+    ### a function to remove nodes that have all the zero values
+    removeZeroDegreeNodes<-function(mat) {
+      zeroDegree <- 0
+      cnt <- 1
+      for(i in 1:nrow(mat)) {
+        if((sum(mat[i,]) == 0) && (sum(mat[,i]) == 0)) {
+          zeroDegree[cnt] <- i
+          cnt <- cnt + 1
+        }
+      }
+      
+      return (mat[-zeroDegree, -zeroDegree])
+    }
+    
+    ### GTEx
+    ### correlation matrix using the target expressions
+    c <- suppressWarnings(cor(t(gtex_dat), method = "spearman", use = "pairwise.complete.obs"))
+    
+    ### diagonal -> 0
+    diag(c) <- 0
+    
+    ### abs and NA -> 0
+    c <- abs(c)
+    c[which(is.na(c), arr.ind = TRUE)] <- 0
+    
+    ### filter edges with the threshold
+    c[which(c < edgeThreshold, arr.ind = TRUE)] <- 0
+    
+    ### remove nodes with all the zero values
+    c <- removeZeroDegreeNodes(c)
+    
+    ### exp and viper sig
+    graph_exp <- apply(gtex_dat, 1, function(x) median(x, na.rm = TRUE))
+    gtex_dat2 <- rbind(gtex_sig[as.character(common_targets),],
+                       gtex_sig[as.character(gtex_only_targets),],
+                       gtex_sig[as.character(tcga_only_targets),])
+    rownames(gtex_dat2) <- rownames(gtex_dat)
+    graph_sig <- apply(gtex_dat2, 1, function(x) median(x, na.rm = TRUE))
+    
+    ### remove zero-degree nodes from exp and sig
+    graph_exp <- graph_exp[rownames(c)]
+    graph_sig <- graph_sig[rownames(c)]
+    
+    ### igraph variables creation
+    g <- graph.adjacency(c, mode = "undirected", weighted = TRUE)
+    rescale <- function(x) (x-min(x))/(max(x) - min(x)) * 10
+    E(g)$width <- rescale(E(g)$weight)
+    E(g)$edgeColor <- "gray"
+    g$legEdgeColor$scale <- "gray"
+    V(g)$nodeSize <- (graph_exp / max(graph_exp, na.rm = TRUE)) * 30
+    V(g)$size <- V(g)$nodeSize
+    V(g)$legNodeSize <- V(g)$nodeSize
+    V(g)$nodeLineColor <- "black"
+    V(g)$VIPER_SIG <- graph_sig
+    g <- att.setv(g, from = "VIPER_SIG", to = "nodeColor", breaks = seq(-3, 3, 0.5), pal = 2)
+    
+    ### load RedeR screen and plot the graph
+    rdp<-RedPort()
+    calld(rdp)
+    addGraph(rdp,g, layout.kamada.kawai(g))
+    
+    ### add legends
+    # color
+    addLegend.color(rdp, g)
+    # size
+    circleLabel<-floor(seq(min(V(g)$nodeSize),max(V(g)$nodeSize),(max(V(g)$nodeSize) - min(V(g)$nodeSize))/4))
+    circleSize<-(circleLabel / max(circleLabel)) * 30
+    addLegend.size(rdp,sizevec=circleSize,labvec=circleLabel,title="Target_Expression")
+    # title
+    shape <- c("ELLIPSE", "DIAMOND")
+    addLegend.shape(rdp,shape, title=paste0("GTEx_", dirName, "_Target_Genes Cor > ", edgeThreshold), position="topleft", ftsize=25, vertical=FALSE, dxtitle=50, dxborder=10, dyborder=-60)
+    
+    
+    
+    
+    
+    
     adjm <- matrix(sample(0:5, 100, replace=TRUE,
                           prob=c(0.9,0.02,0.02,0.02,0.02,0.02)), nc=10)
     g2 <- graph_from_adjacency_matrix(adjm, weighted=TRUE)
