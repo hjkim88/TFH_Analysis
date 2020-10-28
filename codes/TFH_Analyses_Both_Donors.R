@@ -1972,85 +1972,57 @@ tfh_analyses_both_donors <- function(Seurat_RObj_path="./data/SS_Tfh_BothDonors/
         inbound_freq <- lineage_table[paste(temp[-1], collapse = "_"),inbound_day]
         
         ### fill out the table
-        if((outbound_freq > 0) && (inbound_freq > 0)) {
+        if((outbound_clone == inbound_clone) && (outbound_freq > 0) && (inbound_freq > 0)) {
           adj_mat[r,c] <- inbound_freq
         }
       }
     }
     
+    ### diagonal <- 0
+    diag(adj_mat) <- 0
+    
     g <- graph_from_adjacency_matrix(adj_mat, mode = "undirected", weighted = TRUE)
-    coords <- layout_(g, as_star())
+    coords <- layout_(g, as_tree())
     plot(g, layout = coords)
     
-    
-    
-    
-    
-    
-    ### network graph
-    ### need to save figures manually
-    ### load library
-    if(!require(viper)) {
-      source("https://bioconductor.org/biocLite.R")
-      biocLite("viper")
-      library(viper)
-    }
-    if(!require(RedeR)) {
-      source("https://bioconductor.org/biocLite.R")
-      biocLite("RedeR")
-      library(RedeR)
-    }
-    if(!require(igraph)) {
-      source("https://bioconductor.org/biocLite.R")
-      biocLite("igraph")
-      library(igraph)
-    }
-    
-    ### set edge threshold
-    edgeThreshold <- as.numeric(params[[8]])
-    
-    ### a function to remove nodes that have all the zero values
-    removeZeroDegreeNodes<-function(mat) {
-      zeroDegree <- 0
-      cnt <- 1
-      for(i in 1:nrow(mat)) {
-        if((sum(mat[i,]) == 0) && (sum(mat[,i]) == 0)) {
-          zeroDegree[cnt] <- i
-          cnt <- cnt + 1
-        }
+    E(g)$width <- E(g)$weight
+    E(g)$edgeColor <- "gray"
+    V(g)$nodeSize <- sapply(V(g)$name, function(x) {
+      return(max(adj_mat[,x]))
+    })
+    V(g)$nodeSize <- (V(g)$nodeSize / max(V(g)$nodeSize, na.rm = TRUE)) * 30
+    V(g)$color <- sapply(V(g)$name, function(x) {
+      if(grepl("PBMC", x, fixed = TRUE)) {
+        return("red")
+      } else if(grepl("FNA", x, fixed = TRUE)) {
+        return("yellow")
+      } else {
+        return("white")
       }
+    })
+    V(g)$name <- sapply(V(g)$name, function(x) {
+      return(paste(strsplit(x, split = "_", fixed = TRUE)[[1]][1:3], collapse = "_"))
+    })
       
-      return (mat[-zeroDegree, -zeroDegree])
-    }
+    ### load RedeR screen and plot the graph
+    rdp<-RedPort()
+    calld(rdp)
+    addGraph(rdp,g, layout.kamada.kawai(g))
     
-    ### GTEx
-    ### correlation matrix using the target expressions
-    c <- suppressWarnings(cor(t(gtex_dat), method = "spearman", use = "pairwise.complete.obs"))
+    ### add legends
+    # color
+    addLegend.color(rdp, colvec=c("red", "yellow"), labvec=c("PBMC", "FNA"), title="Tissue Type",
+                    vertical=FALSE, position="bottomleft", dyborder=100)
+    # size
+    circleLabel <- c(1, 2, 3, 4, 5)
+    circleLabel<-floor(seq(min(V(g)$nodeSize),max(V(g)$nodeSize),(max(V(g)$nodeSize) - min(V(g)$nodeSize))/4))
+    circleSize<-(circleLabel / max(circleLabel)) * 30
+    circleLabel <- c(1, 2, 3, 4, 5)
+    addLegend.size(rdp,sizevec=circleSize,labvec=circleLabel,title="Clone Size", position="bottomleft")
+    addLegend.color()
     
-    ### diagonal -> 0
-    diag(c) <- 0
     
-    ### abs and NA -> 0
-    c <- abs(c)
-    c[which(is.na(c), arr.ind = TRUE)] <- 0
     
-    ### filter edges with the threshold
-    c[which(c < edgeThreshold, arr.ind = TRUE)] <- 0
-    
-    ### remove nodes with all the zero values
-    c <- removeZeroDegreeNodes(c)
-    
-    ### exp and viper sig
-    graph_exp <- apply(gtex_dat, 1, function(x) median(x, na.rm = TRUE))
-    gtex_dat2 <- rbind(gtex_sig[as.character(common_targets),],
-                       gtex_sig[as.character(gtex_only_targets),],
-                       gtex_sig[as.character(tcga_only_targets),])
-    rownames(gtex_dat2) <- rownames(gtex_dat)
-    graph_sig <- apply(gtex_dat2, 1, function(x) median(x, na.rm = TRUE))
-    
-    ### remove zero-degree nodes from exp and sig
-    graph_exp <- graph_exp[rownames(c)]
-    graph_sig <- graph_sig[rownames(c)]
     
     ### igraph variables creation
     g <- graph.adjacency(c, mode = "undirected", weighted = TRUE)
