@@ -1917,8 +1917,11 @@ tfh_analyses_both_donors <- function(Seurat_RObj_path="./data/SS_Tfh_BothDonors/
   }
   
   ### a function for drawing network plot - PB-associated lineage
+  ### lineage_table: PB-associated lineage table
+  ### by.time: if TREU, all the clones are aggregated by each time point
+  ###          if FALSE, all the clones are represented
   draw_lineage_network <- function(lineage_table,
-                                   print_path="./lineage_network.png") {
+                                   by.time=TRUE) {
     
     ### load library
     if(!require(igraph, quietly = TRUE)) {
@@ -1938,130 +1941,139 @@ tfh_analyses_both_donors <- function(Seurat_RObj_path="./data/SS_Tfh_BothDonors/
     ### get time points
     time_points <- colnames(lineage_table)[4:(ncol(lineage_table)-1)]
     
-    ### set node names
-    node_names <- NULL
-    for(i in 1:nrow(lineage_table)) {
-      for(tp in time_points) {
-        if(lineage_table[i,tp] > 0) {
-          node_names <- c(node_names, paste0(tp, "_", rownames(lineage_table)[i]))
-        }
-      }
-    }
-    
-    ### make adjacency matrix for network
-    ### rows: outbound
-    ### columns: inbound
-    adj_mat <- matrix(0, length(node_names), length(node_names))
-    rownames(adj_mat) <- node_names
-    colnames(adj_mat) <- node_names
-    
-    for(r in rownames(adj_mat)) {
-      for(c in colnames(adj_mat)) {
-        ### outbound
-        temp <- strsplit(r, split = "_", fixed = TRUE)[[1]]
-        outbound_clone <- lineage_table[paste(temp[-1], collapse = "_"),"clone_id"]
-        outbound_day <- temp[1]
-        outbound_tissue <- lineage_table[paste(temp[-1], collapse = "_"),"cell_type"]
-        outbound_freq <- lineage_table[paste(temp[-1], collapse = "_"),outbound_day]
-        
-        ### inbound
-        temp <- strsplit(c, split = "_", fixed = TRUE)[[1]]
-        inbound_clone <- lineage_table[paste(temp[-1], collapse = "_"),"clone_id"]
-        inbound_day <- strsplit(c, split = "_", fixed = TRUE)[[1]][1]
-        inbound_tissue <- lineage_table[paste(temp[-1], collapse = "_"),"cell_type"]
-        inbound_freq <- lineage_table[paste(temp[-1], collapse = "_"),inbound_day]
-        
-        ### fill out the table
-        if((outbound_clone == inbound_clone) && (outbound_freq > 0) && (inbound_freq > 0)) {
-          adj_mat[r,c] <- inbound_freq
-        }
-      }
-    }
-    
-    ### diagonal <- 0
-    diag(adj_mat) <- 0
-    
-    g <- graph_from_adjacency_matrix(adj_mat, mode = "undirected", weighted = TRUE)
-    coords <- layout_(g, as_tree())
-    plot(g, layout = coords)
-    
-    E(g)$width <- E(g)$weight
-    E(g)$edgeColor <- "gray"
-    V(g)$nodeSize <- sapply(V(g)$name, function(x) {
-      return(max(adj_mat[,x]))
-    })
-    V(g)$nodeSize <- (V(g)$nodeSize / max(V(g)$nodeSize, na.rm = TRUE)) * 30
-    V(g)$color <- sapply(V(g)$name, function(x) {
-      if(grepl("PBMC", x, fixed = TRUE)) {
-        return("red")
-      } else if(grepl("FNA", x, fixed = TRUE)) {
-        return("yellow")
-      } else {
-        return("white")
-      }
-    })
-    V(g)$name <- sapply(V(g)$name, function(x) {
-      return(paste(strsplit(x, split = "_", fixed = TRUE)[[1]][1:3], collapse = "_"))
-    })
+    ### if by.time = TRUE
+    if(by.time) {
       
-    ### load RedeR screen and plot the graph
-    rdp<-RedPort()
-    calld(rdp)
-    addGraph(rdp,g, layout.kamada.kawai(g))
+      ### set node names
+      node_names <- c(paste("PBMC", time_points, sep = "_"),
+                      paste("FNA", time_points, sep = "_"))
+      
+      ### make adjacency matrix for network
+      ### rows: outbound
+      ### columns: inbound
+      adj_mat <- matrix(0, length(node_names), length(node_names))
+      rownames(adj_mat) <- node_names
+      colnames(adj_mat) <- node_names
+      
+      for(r in rownames(adj_mat)) {
+        for(c in colnames(adj_mat)) {
+          ### outbound
+          temp <- strsplit(r, split = "_", fixed = TRUE)[[1]]
+          outbound_clone <- lineage_table[paste(temp[-1], collapse = "_"),"clone_id"]
+          outbound_day <- temp[1]
+          outbound_tissue <- lineage_table[paste(temp[-1], collapse = "_"),"cell_type"]
+          outbound_freq <- lineage_table[paste(temp[-1], collapse = "_"),outbound_day]
+          
+          ### inbound
+          temp <- strsplit(c, split = "_", fixed = TRUE)[[1]]
+          inbound_clone <- lineage_table[paste(temp[-1], collapse = "_"),"clone_id"]
+          inbound_day <- strsplit(c, split = "_", fixed = TRUE)[[1]][1]
+          inbound_tissue <- lineage_table[paste(temp[-1], collapse = "_"),"cell_type"]
+          inbound_freq <- lineage_table[paste(temp[-1], collapse = "_"),inbound_day]
+          
+          ### fill out the table
+          if((outbound_clone == inbound_clone) && (outbound_freq > 0) && (inbound_freq > 0)) {
+            adj_mat[r,c] <- inbound_freq
+          }
+        }
+      }
+      
+      
+      
+      
+      
+    } else {
+      
+      ### set node names
+      node_names <- NULL
+      for(i in 1:nrow(lineage_table)) {
+        for(tp in time_points) {
+          if(lineage_table[i,tp] > 0) {
+            node_names <- c(node_names, paste0(tp, "_", rownames(lineage_table)[i]))
+          }
+        }
+      }
+      
+      ### make adjacency matrix for network
+      ### rows: outbound
+      ### columns: inbound
+      adj_mat <- matrix(0, length(node_names), length(node_names))
+      rownames(adj_mat) <- node_names
+      colnames(adj_mat) <- node_names
+      
+      for(r in rownames(adj_mat)) {
+        for(c in colnames(adj_mat)) {
+          ### outbound
+          temp <- strsplit(r, split = "_", fixed = TRUE)[[1]]
+          outbound_clone <- lineage_table[paste(temp[-1], collapse = "_"),"clone_id"]
+          outbound_day <- temp[1]
+          outbound_tissue <- lineage_table[paste(temp[-1], collapse = "_"),"cell_type"]
+          outbound_freq <- lineage_table[paste(temp[-1], collapse = "_"),outbound_day]
+          
+          ### inbound
+          temp <- strsplit(c, split = "_", fixed = TRUE)[[1]]
+          inbound_clone <- lineage_table[paste(temp[-1], collapse = "_"),"clone_id"]
+          inbound_day <- strsplit(c, split = "_", fixed = TRUE)[[1]][1]
+          inbound_tissue <- lineage_table[paste(temp[-1], collapse = "_"),"cell_type"]
+          inbound_freq <- lineage_table[paste(temp[-1], collapse = "_"),inbound_day]
+          
+          ### fill out the table
+          if((outbound_clone == inbound_clone) && (outbound_freq > 0) && (inbound_freq > 0)) {
+            adj_mat[r,c] <- inbound_freq
+          }
+        }
+      }
+      
+      ### diagonal <- 0
+      diag(adj_mat) <- 0
+      
+      g <- graph_from_adjacency_matrix(adj_mat, mode = "undirected", weighted = TRUE)
+      coords <- layout_(g, as_tree())
+      plot(g, layout = coords)
+      
+      E(g)$width <- E(g)$weight
+      E(g)$edgeColor <- "gray"
+      V(g)$nodeSize <- sapply(V(g)$name, function(x) {
+        return(max(adj_mat[,x]))
+      })
+      V(g)$nodeSize <- (V(g)$nodeSize / max(V(g)$nodeSize, na.rm = TRUE)) * 30
+      V(g)$color <- sapply(V(g)$name, function(x) {
+        if(grepl("PBMC", x, fixed = TRUE)) {
+          return("red")
+        } else if(grepl("FNA", x, fixed = TRUE)) {
+          return("yellow")
+        } else {
+          return("white")
+        }
+      })
+      V(g)$name <- sapply(V(g)$name, function(x) {
+        return(paste(strsplit(x, split = "_", fixed = TRUE)[[1]][1:3], collapse = "_"))
+      })
+      
+      ### load RedeR screen and plot the graph
+      rdp<-RedPort()
+      calld(rdp)
+      addGraph(rdp,g, layout.kamada.kawai(g))
+      
+      ### add legends
+      # color
+      addLegend.color(rdp, colvec=c("red", "yellow"), labvec=c("PBMC", "FNA"), title="Tissue Type",
+                      vertical=FALSE, position="bottomleft", dyborder=100)
+      # size
+      circleLabel <- c(1, 2, 3, 4, 5)
+      circleLabel<-floor(seq(min(V(g)$nodeSize),max(V(g)$nodeSize),(max(V(g)$nodeSize) - min(V(g)$nodeSize))/4))
+      circleSize<-(circleLabel / max(circleLabel)) * 30
+      circleLabel <- c(1, 2, 3, 4, 5)
+      addLegend.size(rdp,sizevec=circleSize,labvec=circleLabel,title="Clone Size", position="bottomleft")
+      addLegend.color()
+        
+    }
     
-    ### add legends
-    # color
-    addLegend.color(rdp, colvec=c("red", "yellow"), labvec=c("PBMC", "FNA"), title="Tissue Type",
-                    vertical=FALSE, position="bottomleft", dyborder=100)
-    # size
-    circleLabel <- c(1, 2, 3, 4, 5)
-    circleLabel<-floor(seq(min(V(g)$nodeSize),max(V(g)$nodeSize),(max(V(g)$nodeSize) - min(V(g)$nodeSize))/4))
-    circleSize<-(circleLabel / max(circleLabel)) * 30
-    circleLabel <- c(1, 2, 3, 4, 5)
-    addLegend.size(rdp,sizevec=circleSize,labvec=circleLabel,title="Clone Size", position="bottomleft")
-    addLegend.color()
-    
-    
-    
-    
-    ### igraph variables creation
-    g <- graph.adjacency(c, mode = "undirected", weighted = TRUE)
-    rescale <- function(x) (x-min(x))/(max(x) - min(x)) * 10
-    E(g)$width <- rescale(E(g)$weight)
-    E(g)$edgeColor <- "gray"
-    g$legEdgeColor$scale <- "gray"
-    V(g)$nodeSize <- (graph_exp / max(graph_exp, na.rm = TRUE)) * 30
-    V(g)$size <- V(g)$nodeSize
-    V(g)$legNodeSize <- V(g)$nodeSize
-    V(g)$nodeLineColor <- "black"
-    V(g)$VIPER_SIG <- graph_sig
-    g <- att.setv(g, from = "VIPER_SIG", to = "nodeColor", breaks = seq(-3, 3, 0.5), pal = 2)
-    
-    ### load RedeR screen and plot the graph
-    rdp<-RedPort()
-    calld(rdp)
-    addGraph(rdp,g, layout.kamada.kawai(g))
-    
-    ### add legends
-    # color
-    addLegend.color(rdp, g)
-    # size
-    circleLabel<-floor(seq(min(V(g)$nodeSize),max(V(g)$nodeSize),(max(V(g)$nodeSize) - min(V(g)$nodeSize))/4))
-    circleSize<-(circleLabel / max(circleLabel)) * 30
-    addLegend.size(rdp,sizevec=circleSize,labvec=circleLabel,title="Target_Expression")
-    # title
-    shape <- c("ELLIPSE", "DIAMOND")
-    addLegend.shape(rdp,shape, title=paste0("GTEx_", dirName, "_Target_Genes Cor > ", edgeThreshold), position="topleft", ftsize=25, vertical=FALSE, dxtitle=50, dxborder=10, dyborder=-60)
     
     
     
     
     
-    
-    adjm <- matrix(sample(0:5, 100, replace=TRUE,
-                          prob=c(0.9,0.02,0.02,0.02,0.02,0.02)), nc=10)
-    g2 <- graph_from_adjacency_matrix(adjm, weighted=TRUE)
-    E(g2)$weight
     
     
     
