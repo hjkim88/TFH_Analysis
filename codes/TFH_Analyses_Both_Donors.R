@@ -1959,28 +1959,72 @@ tfh_analyses_both_donors <- function(Seurat_RObj_path="./data/SS_Tfh_BothDonors/
         for(c in colnames(adj_mat)) {
           ### outbound
           temp <- strsplit(r, split = "_", fixed = TRUE)[[1]]
-          outbound_clone <- lineage_table[paste(temp[-1], collapse = "_"),"clone_id"]
-          outbound_day <- temp[1]
-          outbound_tissue <- lineage_table[paste(temp[-1], collapse = "_"),"cell_type"]
-          outbound_freq <- lineage_table[paste(temp[-1], collapse = "_"),outbound_day]
+          outbound_tissue <- temp[1]
+          outbound_day <- temp[2]
           
           ### inbound
           temp <- strsplit(c, split = "_", fixed = TRUE)[[1]]
-          inbound_clone <- lineage_table[paste(temp[-1], collapse = "_"),"clone_id"]
-          inbound_day <- strsplit(c, split = "_", fixed = TRUE)[[1]][1]
-          inbound_tissue <- lineage_table[paste(temp[-1], collapse = "_"),"cell_type"]
-          inbound_freq <- lineage_table[paste(temp[-1], collapse = "_"),inbound_day]
+          inbound_tissue <- temp[1]
+          inbound_day <- temp[2]
+          
+          ### tissue indicies
+          ridx <- which(lineage_table$cell_type == outbound_tissue)
+          cidx <- which(lineage_table$cell_type == inbound_tissue)
           
           ### fill out the table
-          if((outbound_clone == inbound_clone) && (outbound_freq > 0) && (inbound_freq > 0)) {
-            adj_mat[r,c] <- inbound_freq
+          for(i in ridx) {
+            for(j in cidx) {
+              if(lineage_table$clone_id[i] == lineage_table$clone_id[j]) {
+                if(lineage_table[i,outbound_day] > 0 && lineage_table[j,inbound_day] > 0) {
+                  adj_mat[r,c] <- adj_mat[r,c] + lineage_table[j,inbound_day]
+                }
+                break;
+              }
+            }
           }
         }
       }
       
+      ### diagonal <- 0
+      diag(adj_mat) <- 0
       
+      ### make an igraph
+      g <- graph_from_adjacency_matrix(adj_mat, mode = "undirected", weighted = TRUE)
+      coords <- layout_(g, as_tree())
+      plot(g, layout = coords)
       
+      ### node and edge width + colors
+      E(g)$width <- E(g)$weight
+      E(g)$edgeColor <- "gray"
+      V(g)$nodeSize <- sapply(V(g)$name, function(x) {
+        return(max(adj_mat[,x]))
+      })
+      V(g)$nodeSize <- (V(g)$nodeSize / max(V(g)$nodeSize, na.rm = TRUE)) * 30
+      V(g)$color <- sapply(V(g)$name, function(x) {
+        if(grepl("PBMC", x, fixed = TRUE)) {
+          return("red")
+        } else if(grepl("FNA", x, fixed = TRUE)) {
+          return("yellow")
+        } else {
+          return("white")
+        }
+      })
       
+      ### load RedeR screen and plot the graph
+      rdp<-RedPort()
+      calld(rdp)
+      addGraph(rdp,g, layout.kamada.kawai(g))
+      
+      ### add legends
+      # color
+      addLegend.color(rdp, colvec=c("red", "yellow"), labvec=c("PBMC", "FNA"), title="Tissue Type",
+                      vertical=FALSE, position="bottomleft", dyborder=100)
+      # size
+      circleLabel<-floor(seq(min(V(g)$nodeSize),max(V(g)$nodeSize),(max(V(g)$nodeSize) - min(V(g)$nodeSize))/4))
+      circleSize<-(circleLabel / max(circleLabel)) * 30
+      circleLabel <- seq(min(adj_mat), max(adj_mat), 4)
+      addLegend.size(rdp,sizevec=circleSize,labvec=circleLabel,title="Clone Size", position="bottomleft")
+      addLegend.color()
       
     } else {
       
@@ -2027,10 +2071,12 @@ tfh_analyses_both_donors <- function(Seurat_RObj_path="./data/SS_Tfh_BothDonors/
       ### diagonal <- 0
       diag(adj_mat) <- 0
       
+      ### make an igraph
       g <- graph_from_adjacency_matrix(adj_mat, mode = "undirected", weighted = TRUE)
       coords <- layout_(g, as_tree())
       plot(g, layout = coords)
       
+      ### node and edge width + colors
       E(g)$width <- E(g)$weight
       E(g)$edgeColor <- "gray"
       V(g)$nodeSize <- sapply(V(g)$name, function(x) {
@@ -2060,7 +2106,6 @@ tfh_analyses_both_donors <- function(Seurat_RObj_path="./data/SS_Tfh_BothDonors/
       addLegend.color(rdp, colvec=c("red", "yellow"), labvec=c("PBMC", "FNA"), title="Tissue Type",
                       vertical=FALSE, position="bottomleft", dyborder=100)
       # size
-      circleLabel <- c(1, 2, 3, 4, 5)
       circleLabel<-floor(seq(min(V(g)$nodeSize),max(V(g)$nodeSize),(max(V(g)$nodeSize) - min(V(g)$nodeSize))/4))
       circleSize<-(circleLabel / max(circleLabel)) * 30
       circleLabel <- c(1, 2, 3, 4, 5)
