@@ -1918,7 +1918,7 @@ tfh_analyses_both_donors <- function(Seurat_RObj_path="./data/SS_Tfh_BothDonors/
   
   ### a function for drawing network plot - PB-associated lineage
   ### lineage_table: PB-associated lineage table
-  ### by.time: if TREU, all the clones are aggregated by each time point
+  ### by.time: if TRUE, all the clones are aggregated by each time point
   ###          if FALSE, all the clones are represented
   draw_lineage_network <- function(lineage_table,
                                    by.time=TRUE) {
@@ -1999,7 +1999,7 @@ tfh_analyses_both_donors <- function(Seurat_RObj_path="./data/SS_Tfh_BothDonors/
       V(g)$nodeSize <- sapply(V(g)$name, function(x) {
         return(max(adj_mat[,x]))
       })
-      V(g)$nodeSize <- (V(g)$nodeSize / max(V(g)$nodeSize, na.rm = TRUE)) * 30
+      V(g)$nodeSize <- (V(g)$nodeSize / max(V(g)$nodeSize, na.rm = TRUE)) * 100
       V(g)$color <- sapply(V(g)$name, function(x) {
         if(grepl("PBMC", x, fixed = TRUE)) {
           return("red")
@@ -2021,10 +2021,9 @@ tfh_analyses_both_donors <- function(Seurat_RObj_path="./data/SS_Tfh_BothDonors/
                       vertical=FALSE, position="bottomleft", dyborder=100)
       # size
       circleLabel<-floor(seq(min(V(g)$nodeSize),max(V(g)$nodeSize),(max(V(g)$nodeSize) - min(V(g)$nodeSize))/4))
-      circleSize<-(circleLabel / max(circleLabel)) * 30
+      circleSize<-(circleLabel / max(circleLabel)) * 100
       circleLabel <- seq(min(adj_mat), max(adj_mat), 4)
       addLegend.size(rdp,sizevec=circleSize,labvec=circleLabel,title="Clone Size", position="bottomleft")
-      addLegend.color()
       
     } else {
       
@@ -2110,17 +2109,8 @@ tfh_analyses_both_donors <- function(Seurat_RObj_path="./data/SS_Tfh_BothDonors/
       circleSize<-(circleLabel / max(circleLabel)) * 30
       circleLabel <- c(1, 2, 3, 4, 5)
       addLegend.size(rdp,sizevec=circleSize,labvec=circleLabel,title="Clone Size", position="bottomleft")
-      addLegend.color()
         
     }
-    
-    
-    
-    
-    
-    
-    
-    
     
   }
   
