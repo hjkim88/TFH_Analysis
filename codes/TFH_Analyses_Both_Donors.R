@@ -2019,6 +2019,14 @@ tfh_analyses_both_donors <- function(Seurat_RObj_path="./data/SS_Tfh_BothDonors/
         }
       })
       
+      ### edge sizes should be smaller than node sizes
+      if(max(E(g)$width) > (0.3 * max(V(g)$nodeSize))) {
+        E(g)$width <- (E(g)$width / max(E(g)$width, na.rm = TRUE)) * (0.3 * max(V(g)$nodeSize)) 
+      }
+      
+      ### increase the vertex label size
+      V(g)$label.cex <- 2
+      
       ### load RedeR screen and plot the graph
       rdp<-RedPort()
       calld(rdp)
@@ -2027,12 +2035,17 @@ tfh_analyses_both_donors <- function(Seurat_RObj_path="./data/SS_Tfh_BothDonors/
       ### add legends
       # color
       addLegend.color(rdp, colvec=c("red", "yellow"), labvec=c("PBMC", "FNA"), title="Tissue Type",
-                      vertical=FALSE, position="bottomleft", dyborder=100)
+                      vertical=FALSE, position="bottomleft", dyborder=100, ftsize=20)
       # size
-      circleLabel<-floor(seq(min(V(g)$nodeSize),max(V(g)$nodeSize),(max(V(g)$nodeSize) - min(V(g)$nodeSize))/4))
-      circleSize<-(circleLabel / max(circleLabel)) * 100
+      circleLabel <- floor(seq(min(V(g)$nodeSize),max(V(g)$nodeSize),(max(V(g)$nodeSize) - min(V(g)$nodeSize))/4))
+      circleSize <- (circleLabel / max(circleLabel)) * 100
       circleLabel <- floor(seq(min(adj_mat), max(adj_mat), ((max(adj_mat) - min(adj_mat))/4)))
-      addLegend.size(rdp,sizevec=circleSize,labvec=circleLabel,title="Clone Size", position="bottomleft")
+      ### circle size in the legend should be at least 1
+      if(circleSize[1] == 0) {
+        circleLabel[1] <- 1
+        circleSize[1] <- (1 / max(circleLabel)) * 100
+      }
+      addLegend.size(rdp,sizevec=circleSize,labvec=circleLabel,title="Clone Size", position="bottomleft", ftsize=20)
       
     } else {
       
