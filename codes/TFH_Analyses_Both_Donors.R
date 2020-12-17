@@ -2039,7 +2039,9 @@ tfh_analyses_both_donors <- function(Seurat_RObj_path="./data/SS_Tfh_BothDonors/
       # size
       circleLabel <- floor(seq(min(V(g)$nodeSize),max(V(g)$nodeSize),(max(V(g)$nodeSize) - min(V(g)$nodeSize))/4))
       circleSize <- (circleLabel / max(circleLabel)) * 100
-      circleLabel <- floor(seq(min(adj_mat), max(adj_mat), ((max(adj_mat) - min(adj_mat))/4)))
+      diag(adj_mat) <- NA
+      circleLabel <- floor(seq(min(adj_mat, na.rm = TRUE), max(adj_mat, na.rm = TRUE),
+                               ((max(adj_mat, na.rm = TRUE) - min(adj_mat, na.rm = TRUE))/4)))
       ### circle size in the legend should be at least 1
       if(circleSize[1] == 0) {
         circleLabel[1] <- 1
