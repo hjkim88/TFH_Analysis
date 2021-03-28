@@ -210,11 +210,11 @@ tfh_analyses_both_donors <- function(Seurat_RObj_path="./data/SS_Tfh_BothDonors/
             
             if(nrow(kegg_enrich) > 0) {
               p[[1]] <- ggplot(result, aes(x=Description, y=Count)) + labs(x="", y="Gene Counts") + 
-                theme_classic(base_size = 16) + geom_bar(aes(fill = p.adjust), stat="identity") + coord_flip() +
+                theme_classic(base_size = 50) + geom_bar(aes(fill = p.adjust), stat="identity") + coord_flip() +
                 scale_x_discrete(limits = rev(description)) +
                 guides(fill = guide_colorbar(ticks=FALSE, title="P.Val", barheight=10)) +
                 ggtitle(paste0("KEGG ", title)) +
-                theme(axis.text = element_text(size = 25))
+                theme(axis.text = element_text(size = 50))
               
               png(paste0(dir, "kegg_", title, "_CB.png"), width = 2000, height = 1000)
               print(p[[1]])
@@ -254,11 +254,11 @@ tfh_analyses_both_donors <- function(Seurat_RObj_path="./data/SS_Tfh_BothDonors/
             
             if(nrow(go_enrich) > 0) {
               p[[2]] <- ggplot(result, aes(x=Description, y=Count)) + labs(x="", y="Gene Counts") + 
-                theme_classic(base_size = 16) + geom_bar(aes(fill = p.adjust), stat="identity") + coord_flip() +
+                theme_classic(base_size = 50) + geom_bar(aes(fill = p.adjust), stat="identity") + coord_flip() +
                 scale_x_discrete(limits = rev(description)) +
                 guides(fill = guide_colorbar(ticks=FALSE, title="P.Val", barheight=10)) +
                 ggtitle(paste0("GO ", title)) +
-                theme(axis.text = element_text(size = 25))
+                theme(axis.text = element_text(size = 50))
               
               png(paste0(dir, "go_", title, "_CB.png"), width = 2000, height = 1000)
               print(p[[2]])
@@ -1045,16 +1045,17 @@ tfh_analyses_both_donors <- function(Seurat_RObj_path="./data/SS_Tfh_BothDonors/
           }
         }
         points(centers[clusters %in% clus2include, dims],
-               cex = cex, pch = 16, col = col[1])
+               cex = cex+1, pch = 16, col = col[1])
         if(show.constraints && !is.null(constraints.col)){
           for(const in names(constraints.col)) {
             points(centers[clusters %in% const, dims,
-                           drop=FALSE], cex = cex / 2,
+                           drop=FALSE], cex = cex-0.5,
                    col = constraints.col[const], pch = 16)
-            text(x = centers[clusters %in% const, dims[1]]+0.3,
-                 y = centers[clusters %in% const, dims[2]]+0.8,
+            text(x = centers[clusters %in% const, dims[1]]+0,
+                 y = centers[clusters %in% const, dims[2]]+1.3,
                  labels = const,
-                 cex = cex / 3,
+                 font = 2,
+                 cex = cex-0.5,
                  col = "black")
           }
         }
@@ -2731,11 +2732,11 @@ tfh_analyses_both_donors <- function(Seurat_RObj_path="./data/SS_Tfh_BothDonors/
     plot(pca_map,
          main=paste(donor, "Trajectory Inference Based On Mclust Clusters (PCA)"),
          col = cell_colors_clust[as.character(subset_Seurat_Obj@meta.data$mclust_clusters)],
-         pch = 19, cex = 1.5)
+         pch = 19, cex = 2)
     lines(slingshot_obj, lwd = 2, type = "lineages", col = "black",
           show.constraints = TRUE, constraints.col = cell_colors_clust)
     legend("bottomleft", legend = names(cell_colors_clust), col = cell_colors_clust,
-           pch = 19)
+           pch = 19, cex = 1.5)
     dev.off()
     
     ### Trajectory inference on multi dimentional PCA
@@ -2777,11 +2778,11 @@ tfh_analyses_both_donors <- function(Seurat_RObj_path="./data/SS_Tfh_BothDonors/
     plot(reducedDim(slingshot_obj),
          main=paste(donor, "Trajectory Inference Based On Time (PCA)"),
          col = cell_colors_clust[as.character(subset_Seurat_Obj@meta.data$Day)],
-         pch = 19, cex = 1)
-    lines(slingshot_obj, lwd = 2, type = "lineages", col = "black",
+         pch = 19, cex = 2)
+    lines(slingshot_obj, lwd = 4, type = "lineages", col = "black",
           show.constraints = TRUE, constraints.col = cell_colors_clust)
-    legend("bottomleft", legend = names(cell_colors_clust), col = cell_colors_clust,
-           pch = 19)
+    legend("topright", legend = names(cell_colors_clust), col = cell_colors_clust,
+           pch = 19, cex = 1.5)
     dev.off()
     
     ### Trajectory inference on multi dimentional PCA
