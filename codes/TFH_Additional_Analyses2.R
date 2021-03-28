@@ -585,7 +585,7 @@ tfh_additional_analyses2 <- function(Seurat_RObj_path="./data/Ali_Tcell_combined
   subset_Seurat_Obj@meta.data <- subset_Seurat_Obj@meta.data[order(subset_Seurat_Obj@meta.data$Day),]
   
   ### rownames in the meta.data should be in the same order as colnames in the counts
-  subset_Seurat_Obj@assays$RNA@counts <- subset_Seurat_Obj@assays$RNA@counts[,rownames(subset_Seurat_Obj@meta.data)]
+  subset_Seurat_Obj@assays$RNA@counts <- Seurat_Obj@assays$RNA@counts[,rownames(subset_Seurat_Obj@meta.data)]
   
   ### run PCA
   subset_Seurat_Obj <- RunPCA(subset_Seurat_Obj, npcs = 10)
