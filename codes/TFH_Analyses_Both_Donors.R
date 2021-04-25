@@ -17,8 +17,8 @@
 #                                          outputDir="./results/v3/")
 ###
 
-tfh_analyses_both_donors <- function(Seurat_RObj_path="./data/SS_Tfh_BothDonors/BothDonors_Tfh_matched_clones_v2.rds",
-                                     outputDir="./results/v3/") {
+tfh_analyses_both_donors <- function(Seurat_RObj_path="./data/BothDonors_Tfh_new.rds",
+                                     outputDir="./results/v4/") {
   
   ### load libraries
   if(!require(Seurat, quietly = TRUE)) {
@@ -108,9 +108,9 @@ tfh_analyses_both_donors <- function(Seurat_RObj_path="./data/SS_Tfh_BothDonors/
   ### see how cells are distributed based on Donor info
   DimPlot(Seurat_Obj, reduction = "umap", group.by = "Donor", pt.size = 1)
   
-  ### change the Day column of the meta.data
-  Seurat_Obj@meta.data$Day <- factor(paste0("d", as.character(Seurat_Obj@meta.data$Day)),
-                                     levels = c("d0", "d5", "d12", "d28", "d60", "d90", "d120", "d180"))
+  # ### change the Day column of the meta.data
+  # Seurat_Obj@meta.data$Day <- factor(paste0("d", as.character(Seurat_Obj@meta.data$Day)),
+  #                                    levels = c("d0", "d5", "d12", "d28", "d60", "d90", "d120", "d180"))
   
   ### shared clone between two donors
   match_cdr_04 <- Seurat_Obj@meta.data$match.cdr[which(Seurat_Obj@meta.data$Donor == "321-04")]
@@ -216,7 +216,7 @@ tfh_analyses_both_donors <- function(Seurat_RObj_path="./data/SS_Tfh_BothDonors/
                 ggtitle(paste0("KEGG ", title)) +
                 theme(axis.text = element_text(size = 50))
               
-              png(paste0(dir, "kegg_", title, "_CB.png"), width = 2000, height = 1000)
+              png(paste0(dir, "kegg_", title, "_CB.png"), width = 2200, height = 1000)
               print(p[[1]])
               dev.off()
             } else {
@@ -260,7 +260,7 @@ tfh_analyses_both_donors <- function(Seurat_RObj_path="./data/SS_Tfh_BothDonors/
                 ggtitle(paste0("GO ", title)) +
                 theme(axis.text = element_text(size = 50))
               
-              png(paste0(dir, "go_", title, "_CB.png"), width = 2000, height = 1000)
+              png(paste0(dir, "go_", title, "_CB.png"), width = 2200, height = 1000)
               print(p[[2]])
               dev.off()
             } else {
@@ -791,9 +791,10 @@ tfh_analyses_both_donors <- function(Seurat_RObj_path="./data/SS_Tfh_BothDonors/
     }
     else plot.new()
     if (!is.null(main))
-      title(main, cex.main = 1.5 * op[["cex.main"]])
+      # title(main, cex.main = 1.5 * op[["cex.main"]])
+      title(main, cex.main = 5)
     if (key) {
-      par(mar = c(5, 4, 2, 1), cex = 0.75)
+      par(mar = c(5, 4, 2, 1), cex = 1)
       tmpbreaks <- breaks
       if (symkey) {
         max.raw <- max(abs(c(x, breaks)), na.rm = TRUE)
@@ -809,15 +810,15 @@ tfh_analyses_both_donors <- function(Seurat_RObj_path="./data/SS_Tfh_BothDonors/
       z <- seq(min.raw, max.raw, length = length(col))
       image(z = matrix(z, ncol = 1), col = col, breaks = tmpbreaks,
             xaxt = "n", yaxt = "n")
-      par(usr = c(0, 1, 0, 1))
+      par(usr = c(0, 1, 2, 1), cex = 1, cex.lab = 1, cex.axis = 1, cex.main = 1)
       lv <- pretty(breaks)
       xv <- scale01(as.numeric(lv), min.raw, max.raw)
-      axis(1, at = xv, labels = lv)
+      axis(1, at = xv, labels = lv, cex.axis = 2)
       if (scale == "row")
         mtext(side = 1, "Row Z-Score", line = 2)
       else if (scale == "column")
         mtext(side = 1, "Column Z-Score", line = 2)
-      else mtext(side = 1, KeyValueName, line = 2)
+      else mtext(side = 1, KeyValueName, line = 3, cex = 2)
       if (density.info == "density") {
         dens <- density(x, adjust = densadj, na.rm = TRUE)
         omit <- dens$x < min(breaks) | dens$x > max(breaks)
@@ -826,10 +827,10 @@ tfh_analyses_both_donors <- function(Seurat_RObj_path="./data/SS_Tfh_BothDonors/
         dens$x <- scale01(dens$x, min.raw, max.raw)
         lines(dens$x, dens$y/max(dens$y) * 0.95, col = denscol,
               lwd = 1)
-        axis(2, at = pretty(dens$y)/max(dens$y) * 0.95, pretty(dens$y))
-        title("Color Key\nand Density Plot")
-        par(cex = 0.5)
-        mtext(side = 2, "Density", line = 2)
+        axis(2, at = pretty(dens$y)/max(dens$y) * 0.95, pretty(dens$y), cex.axis=2)
+        title("Color Key", cex = 2, cex.main = 2)
+        par(cex = 2)
+        mtext(side = 2, "Density", line = 3, cex = 2)
       }
       else if (density.info == "histogram") {
         h <- hist(x, plot = FALSE, breaks = breaks)
@@ -837,12 +838,12 @@ tfh_analyses_both_donors <- function(Seurat_RObj_path="./data/SS_Tfh_BothDonors/
         hy <- c(h$counts, h$counts[length(h$counts)])
         lines(hx, hy/max(hy) * 0.95, lwd = 1, type = "s",
               col = denscol)
-        axis(2, at = pretty(hy)/max(hy) * 0.95, pretty(hy))
-        title("Color Key\nand Histogram")
-        par(cex = 0.5)
-        mtext(side = 2, "Count", line = 2)
+        axis(2, at = pretty(hy)/max(hy) * 0.95, pretty(hy), cex.axis=2)
+        title("Color Key", cex = 2, cex.main = 2)
+        par(cex = 2)
+        mtext(side = 2, "Count", line = 3, cex = 2)
       }
-      else title("Color Key")
+      else title("Color Key", cex = 2, cex.main = 2)
     }
     else plot.new()
     retval$colorTable <- data.frame(low = retval$breaks[-length(retval$breaks)],
@@ -1051,12 +1052,12 @@ tfh_analyses_both_donors <- function(Seurat_RObj_path="./data/SS_Tfh_BothDonors/
             points(centers[clusters %in% const, dims,
                            drop=FALSE], cex = cex-0.5,
                    col = constraints.col[const], pch = 16)
-            text(x = centers[clusters %in% const, dims[1]]+0,
-                 y = centers[clusters %in% const, dims[2]]+1.3,
-                 labels = const,
-                 font = 2,
-                 cex = cex-0.5,
-                 col = "black")
+            # text(x = centers[clusters %in% const, dims[1]]+0,
+            #      y = centers[clusters %in% const, dims[2]]+2,
+            #      labels = const,
+            #      font = 2,
+            #      cex = cex-0.5,
+            #      col = "black")
           }
         }
       }
@@ -1996,7 +1997,7 @@ tfh_analyses_both_donors <- function(Seurat_RObj_path="./data/SS_Tfh_BothDonors/
           remove_idx <- c(remove_idx, i)
         }
       }
-      # adj_mat <- adj_mat[-remove_idx, -remove_idx]
+      adj_mat <- adj_mat[-remove_idx, -remove_idx]
       
       ### make an igraph
       g <- graph_from_adjacency_matrix(adj_mat, mode = "undirected", weighted = TRUE)
@@ -2012,9 +2013,9 @@ tfh_analyses_both_donors <- function(Seurat_RObj_path="./data/SS_Tfh_BothDonors/
       V(g)$nodeSize <- (V(g)$nodeSize / max(V(g)$nodeSize, na.rm = TRUE)) * 100
       V(g)$color <- sapply(V(g)$name, function(x) {
         if(grepl("PBMC", x, fixed = TRUE)) {
-          return("red")
+          return("#EA3426")
         } else if(grepl("FNA", x, fixed = TRUE)) {
-          return("yellow")
+          return("#0C1BFF")
         } else {
           return("white")
         }
@@ -2026,7 +2027,7 @@ tfh_analyses_both_donors <- function(Seurat_RObj_path="./data/SS_Tfh_BothDonors/
       }
       
       ### increase the vertex label size
-      V(g)$label.cex <- 2
+      V(g)$label.cex <- 4
       
       ### load RedeR screen and plot the graph
       rdp<-RedPort()
@@ -2035,8 +2036,9 @@ tfh_analyses_both_donors <- function(Seurat_RObj_path="./data/SS_Tfh_BothDonors/
       
       ### add legends
       # color
-      addLegend.color(rdp, colvec=c("red", "yellow"), labvec=c("PBMC", "FNA"), title="Tissue Type",
-                      vertical=FALSE, position="bottomleft", dyborder=100, ftsize=20)
+      addLegend.color(rdp, colvec=c("#EA3426", "#0C1BFF"), labvec=c("PBMC", "FNA"), title="",
+                      vertical=TRUE, position="bottomleft", dxborder=50, dyborder=400, size=50, ftsize=50)
+      
       # size
       circleLabel <- floor(seq(min(V(g)$nodeSize),max(V(g)$nodeSize),(max(V(g)$nodeSize) - min(V(g)$nodeSize))/4))
       circleSize <- (circleLabel / max(circleLabel)) * 100
@@ -2048,7 +2050,8 @@ tfh_analyses_both_donors <- function(Seurat_RObj_path="./data/SS_Tfh_BothDonors/
         circleLabel[1] <- 1
         circleSize[1] <- (1 / max(circleLabel)) * 100
       }
-      addLegend.size(rdp,sizevec=circleSize,labvec=circleLabel,title="Clone Size", position="bottomleft", ftsize=20)
+      addLegend.size(rdp,sizevec=circleSize,labvec=circleLabel,title="Clone Size",
+                     position="bottomleft", dxborder=50, dyborder=100, ftsize=30)
       
     } else {
       
@@ -2169,12 +2172,12 @@ tfh_analyses_both_donors <- function(Seurat_RObj_path="./data/SS_Tfh_BothDonors/
     rownames(clone_summary_table) <- clone_summary_table$clone_id
     
     ### add time point counts and the total count of the clonotypes
-    time_points <- c("d0", "d5", "d12", "d28", "d60", "d90", "d120", "d180")
+    time_points <- c("0", "5", "12", "28", "60", "90", "120", "180")
     clone_summary_table[time_points] <- 0
     clone_summary_table$total_count <- 0
     
     ### fill out the counts
-    tp_indicies <- lapply(time_points, function(x) which(subset_Seurat_Obj@meta.data$Day == x))
+    tp_indicies <- lapply(time_points, function(x) which(as.character(subset_Seurat_Obj@meta.data$Day) == x))
     names(tp_indicies) <- time_points
     for(clone in rownames(clone_summary_table)) {
       clone_idx <- which(subset_Seurat_Obj@meta.data$clone_id == clone)
@@ -2231,14 +2234,17 @@ tfh_analyses_both_donors <- function(Seurat_RObj_path="./data/SS_Tfh_BothDonors/
       ggtitle(paste("Clonal Tracing of the TFH-related Cells", donor)) +
       geom_flow() +
       geom_stratum(alpha = 1) +
-      geom_text(stat = "stratum", size = 0.8) +
+      # geom_text(stat = "stratum", size = 0.8) +
       rotate_x_text(90) +
       theme_pubr(legend = "none") +
-      theme(axis.title.x = element_blank()) +
-      theme_cleveland2() +
       scale_fill_viridis(discrete = T) +
-      scale_y_continuous(expand = c(0, 0), limits = c(0, NA))
-    ggsave(file = paste0(outputDir2, donor, "_TFH_Clonal_Tracing.png"), width = 18, height = 9, dpi = 300)
+      scale_y_continuous(expand = c(0, 0), limits = c(0, NA)) +
+      theme_classic(base_size = 36) +
+      theme(axis.text.x = element_text(size = 44),
+            axis.title.x = element_blank(),
+            axis.title.y = element_text(size = 40),
+            legend.position = "none")
+    ggsave(file = paste0(outputDir2, donor, "_TFH_Clonal_Tracing.png"), width = 20, height = 10, dpi = 350)
     
     ### separate the LN and PB cells
     clone_summary_table_LNPB <- data.frame(sapply(clone_summary_table, function(x) c(rbind(x, x, x))),
@@ -2388,7 +2394,7 @@ tfh_analyses_both_donors <- function(Seurat_RObj_path="./data/SS_Tfh_BothDonors/
     ### run UMAP
     subset_Seurat_Obj <- RunUMAP(subset_Seurat_Obj, dims = 1:5)
     
-    ### if the donor is 321-05, flip the sign of the PC1 and PC2 for consistency with the previous results
+    ### if donor == "321-05", flip the sign of the PC1 and PC2 for consistency with the previous results
     if(donor == "321-05") {
       subset_Seurat_Obj@reductions$pca@cell.embeddings <- -subset_Seurat_Obj@reductions$pca@cell.embeddings
       subset_Seurat_Obj@reductions$pca@feature.loadings <- -subset_Seurat_Obj@reductions$pca@feature.loadings
@@ -2402,8 +2408,8 @@ tfh_analyses_both_donors <- function(Seurat_RObj_path="./data/SS_Tfh_BothDonors/
                                   cells = rownames(subset_Seurat_Obj@meta.data),
                                   value = subset_Seurat_Obj@meta.data$clone_id)
     subset_Seurat_Obj2 <- subset(subset_Seurat_Obj, idents=lineage_table$clone_id[1:9])
-    subset_Seurat_Obj2@meta.data$Day <- factor(subset_Seurat_Obj2@meta.data$Day,
-                                              levels = c("d0", "d5", "d12", "d28", "d60", "d90", "d120", "d180"))
+    # subset_Seurat_Obj2@meta.data$Day <- factor(subset_Seurat_Obj2@meta.data$Day,
+    #                                           levels = c("d0", "d5", "d12", "d28", "d60", "d90", "d120", "d180"))
     
     ### draw the PCA & UMAP
     DimPlot(subset_Seurat_Obj2, reduction = "pca", split.by = "clone_id", group.by = "Day", shape.by = "Tissue",
@@ -2538,15 +2544,15 @@ tfh_analyses_both_donors <- function(Seurat_RObj_path="./data/SS_Tfh_BothDonors/
                                                               important_genes,
                                                               "ENTREZID", "SYMBOL"),
                                             org = "human", database = "GO",
-                                            title = paste0(donor, "_Pathway_Results_", length(important_genes), "_PC1_Genes_", contb_threshold),
-                                            displayNum = 30, imgPrint = TRUE,
+                                            title = paste0(donor, " Pathways"),
+                                            displayNum = 10, imgPrint = TRUE,
                                             dir = paste0(outputDir2))
     pathway_result_KEGG <- pathwayAnalysis_CP(geneList = mapIds(org.Hs.eg.db,
                                                                 important_genes,
                                                                 "ENTREZID", "SYMBOL"),
                                               org = "human", database = "KEGG",
-                                              title = paste0(donor, "_Pathway_Results_", length(important_genes), "_PC1_Genes_", contb_threshold),
-                                              displayNum = 30, imgPrint = TRUE,
+                                              title = paste0(donor, " Pathways"),
+                                              displayNum = 10, imgPrint = TRUE,
                                               dir = paste0(outputDir2))
     write.xlsx2(pathway_result_GO, file = paste0(outputDir2, donor, "_GO_pathway_results_", length(important_genes), "_PC1_Genes_", contb_threshold, ".xlsx"),
                 row.names = FALSE, sheetName = paste0("GO_Results"))
@@ -2577,8 +2583,8 @@ tfh_analyses_both_donors <- function(Seurat_RObj_path="./data/SS_Tfh_BothDonors/
     heatmap_mat_scaled[which(heatmap_mat_scaled > abs(min(heatmap_mat_scaled)))] <- abs(min(heatmap_mat_scaled))
     
     ### set colside colors
-    uniqueV <- levels(subset_Seurat_Obj@meta.data$Day)
-    colors <- colorRampPalette(brewer.pal(9,"Blues"))(length(uniqueV))
+    uniqueV <- unique(as.character(subset_Seurat_Obj@meta.data$Day))
+    colors <- colorRampPalette(brewer.pal(9,"Blues"))(length(uniqueV)+1)[2:(length(uniqueV)+1)]
     names(colors) <- uniqueV
     
     ### hierarchical clustering functions
@@ -2586,20 +2592,20 @@ tfh_analyses_both_donors <- function(Seurat_RObj_path="./data/SS_Tfh_BothDonors/
     hclust.ave <- function(x) hclust(x, method="average")
     
     ### heatmap
-    png(paste0(outputDir2, donor, "_PC1_Genes_Heatmap.png"), width = 2000, height = 1000)
+    pdf(paste0(outputDir2, donor, "_PC1_Genes_Heatmap.pdf"), width = 20, height = 15)
     par(oma=c(0,0,2,6))
-    heatmap.3(as.matrix(heatmap_mat_scaled), main = paste0("PC1_Genes_Heatmap_(",
+    heatmap.3(as.matrix(heatmap_mat_scaled), main = paste0("PC1 Genes Heatmap (",
                                                            nrow(heatmap_mat_scaled), " Genes x ",
                                                            ncol(heatmap_mat_scaled), " Cells)"),
               xlab = "", ylab = "", col=greenred(100),
-              scale="none", key=T, keysize=0.8, density.info="density",
+              scale="none", key=T, keysize=1, density.info="none",
               dendrogram = "none", trace = "none",
               labRow = rownames(heatmap_mat_scaled), labCol = FALSE,
               Rowv = TRUE, Colv = FALSE,
               distfun=dist.spear, hclustfun=hclust.ave,
               ColSideColors = cbind(colors[as.character(subset_Seurat_Obj@meta.data$Day)]),
-              cexRow = 2, cexCol = 2, na.rm = TRUE)
-    legend("left", inset = 0, xpd = TRUE, title = "Cell Collection Time", legend = names(colors), fill = colors, cex = 2, box.lty = 0)
+              cexRow = 3, cexCol = 3, cex.main = 5, na.rm = TRUE)
+    legend("left", inset = 0.03, xpd = TRUE, title = "Time", legend = unique(as.character(subset_Seurat_Obj@meta.data$Day)), fill = colors, cex = 2, box.lty = 0)
     dev.off()
     
     
@@ -2774,15 +2780,18 @@ tfh_analyses_both_donors <- function(Seurat_RObj_path="./data/SS_Tfh_BothDonors/
                                             unique(subset_Seurat_Obj@meta.data$Day)), hue_pal())
     
     ### Trajectory inference
-    png(paste0(outputDir2, donor, "_Trajectory_Inference_Time_PCA.png"), width = 2500, height = 1500, res = 200)
+    png(paste0(outputDir2, donor, "_Trajectory_Inference_Time_PCA.png"), width = 5000, height = 3000, res = 350)
+    par(mar=c(7, 7, 7, 1), mgp=c(4,1,0))
     plot(reducedDim(slingshot_obj),
          main=paste(donor, "Trajectory Inference Based On Time (PCA)"),
          col = cell_colors_clust[as.character(subset_Seurat_Obj@meta.data$Day)],
-         pch = 19, cex = 2)
+         pch = 19, cex = 2, cex.lab = 3, cex.main = 3, cex.axis = 2)
+    # title(xlab="PC1", mgp=c(1,1,0), cex.lab=3)
+    # title(ylab="PC2", mgp=c(1,1,0), cex.lab=3)
     lines(slingshot_obj, lwd = 4, type = "lineages", col = "black",
           show.constraints = TRUE, constraints.col = cell_colors_clust)
     legend("topright", legend = names(cell_colors_clust), col = cell_colors_clust,
-           pch = 19, cex = 1.5)
+           pch = 19, cex = 2)
     dev.off()
     
     ### Trajectory inference on multi dimentional PCA
