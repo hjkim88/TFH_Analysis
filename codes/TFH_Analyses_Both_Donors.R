@@ -98,12 +98,34 @@ tfh_analyses_both_donors <- function(Seurat_RObj_path="./data/BothDonors_Tfh_new
     install.packages("RColorBrewer")
     require(RColorBrewer, quietly = TRUE)
   }
+  if(!require(monocle, quietly = TRUE)) {
+    if (!requireNamespace("BiocManager", quietly = TRUE))
+      install.packages("BiocManager")
+    BiocManager::install("monocle")
+    require(monocle, quietly = TRUE)
+  }
   
   ### load Stefan's t-cell object v2 - both donors
   Seurat_Obj <- readRDS(Seurat_RObj_path)
   
   ### rownames in the meta.data should be in the same order as colnames in the counts
   Seurat_Obj@meta.data <- Seurat_Obj@meta.data[colnames(Seurat_Obj@assays$RNA@counts),]
+  
+  ### only use early and GC TFH cells
+  Seurat_Obj <- SetIdent(object = Seurat_Obj,
+                         cells = rownames(Seurat_Obj@meta.data),
+                         value = Seurat_Obj@meta.data$Tfh_type)
+  Seurat_Obj <- subset(Seurat_Obj, idents=c("early Tfh", "GC Tfh"))
+  
+  ### rownames in the meta.data should be in the same order as colnames in the counts
+  Seurat_Obj@meta.data <- Seurat_Obj@meta.data[colnames(Seurat_Obj@assays$RNA@counts),]
+  print(identical(rownames(Seurat_Obj@meta.data), colnames(Seurat_Obj@assays$RNA@counts)))
+  
+  ### active assay = "RNA"
+  Seurat_Obj@active.assay <- "RNA"
+  
+  ### check whether the orders are the same
+  print(identical(names(Idents(object = Seurat_Obj)), rownames(Seurat_Obj@meta.data)))
   
   ### see how cells are distributed based on Donor info
   DimPlot(Seurat_Obj, reduction = "umap", group.by = "Donor", pt.size = 1)
@@ -2159,12 +2181,6 @@ tfh_analyses_both_donors <- function(Seurat_RObj_path="./data/BothDonors_Tfh_new
                            value = Seurat_Obj@meta.data$Donor)
     subset_Seurat_Obj <- subset(Seurat_Obj, idents=donor)
     
-    ### order the meta data by time
-    subset_Seurat_Obj@meta.data <- subset_Seurat_Obj@meta.data[order(subset_Seurat_Obj@meta.data$Day),]
-    
-    ### rownames in the meta.data should be in the same order as colnames in the counts
-    subset_Seurat_Obj@assays$RNA@counts <- subset_Seurat_Obj@assays$RNA@counts[,rownames(subset_Seurat_Obj@meta.data)]
-    
     ### make a clone summary table
     unique_clone_idx <- which(!duplicated(subset_Seurat_Obj@meta.data$clone_id))
     clone_summary_table <- data.frame(clone_id=subset_Seurat_Obj@meta.data$clone_id[unique_clone_idx],
@@ -2394,11 +2410,11 @@ tfh_analyses_both_donors <- function(Seurat_RObj_path="./data/BothDonors_Tfh_new
     ### run UMAP
     subset_Seurat_Obj <- RunUMAP(subset_Seurat_Obj, dims = 1:5)
     
-    ### if donor == "321-05", flip the sign of the PC1 and PC2 for consistency with the previous results
-    if(donor == "321-05") {
-      subset_Seurat_Obj@reductions$pca@cell.embeddings <- -subset_Seurat_Obj@reductions$pca@cell.embeddings
-      subset_Seurat_Obj@reductions$pca@feature.loadings <- -subset_Seurat_Obj@reductions$pca@feature.loadings
-    }
+    # ### if donor == "321-05", flip the sign of the PC1 and PC2 for consistency with the previous results
+    # if(donor == "321-05") {
+    #   subset_Seurat_Obj@reductions$pca@cell.embeddings <- -subset_Seurat_Obj@reductions$pca@cell.embeddings
+    #   subset_Seurat_Obj@reductions$pca@feature.loadings <- -subset_Seurat_Obj@reductions$pca@feature.loadings
+    # }
     
     ### check whether the orders are the same
     print(identical(names(Idents(object = subset_Seurat_Obj)), rownames(subset_Seurat_Obj@meta.data)))
@@ -2790,8 +2806,8 @@ tfh_analyses_both_donors <- function(Seurat_RObj_path="./data/BothDonors_Tfh_new
     # title(ylab="PC2", mgp=c(1,1,0), cex.lab=3)
     lines(slingshot_obj, lwd = 4, type = "lineages", col = "black",
           show.constraints = TRUE, constraints.col = cell_colors_clust)
-    legend("topright", legend = names(cell_colors_clust), col = cell_colors_clust,
-           pch = 19, cex = 2)
+    legend("bottomright", legend = names(cell_colors_clust), col = cell_colors_clust,
+           pch = 19, cex = 1.8)
     dev.off()
     
     ### Trajectory inference on multi dimentional PCA
@@ -2813,6 +2829,80 @@ tfh_analyses_both_donors <- function(Seurat_RObj_path="./data/BothDonors_Tfh_new
                           width = 1200,
                           height = 800)
     rgl.close()
+    
+    ### Construct a monocle cds
+    monocle_cds <- newCellDataSet(as(as.matrix(subset_Seurat_Obj@assays$RNA@data), 'sparseMatrix'),
+                                  phenoData = new('AnnotatedDataFrame', data = subset_Seurat_Obj@meta.data),
+                                  featureData = new('AnnotatedDataFrame', data = data.frame(gene_short_name = row.names(subset_Seurat_Obj@assays$RNA@data),
+                                                                                            row.names = row.names(subset_Seurat_Obj@assays$RNA@data),
+                                                                                            stringsAsFactors = FALSE, check.names = FALSE)),
+                                  lowerDetectionLimit = 0.5,
+                                  expressionFamily = negbinomial.size())
+    
+    ### run monocle
+    monocle_cds <- estimateSizeFactors(monocle_cds)
+    monocle_cds <- estimateDispersions(monocle_cds)
+    monocle_cds <- reduceDimension(monocle_cds, reduction_method = "DDRTree")
+    monocle_cds <- orderCells(monocle_cds)
+    
+    ### determine the beginning state
+    plot_cell_trajectory(monocle_cds, color_by = "Day") + geom_point(alpha=0.1)
+    plot_cell_trajectory(monocle_cds, color_by = "State")
+    plot_complex_cell_trajectory(monocle_cds, color_by = "State")
+    if(donor == "321-04") {
+      monocle_cds <- orderCells(monocle_cds, root_state = "2")
+    } else if(donor == "321-05") {
+      monocle_cds <- orderCells(monocle_cds, root_state = "2")
+      monocle_cds$Day2 <- as.character(monocle_cds$Day)
+      monocle_cds$Day2[which(monocle_cds$Day2 %in% c("0", "5", "12"))] <- "Early"
+      monocle_cds$Day2[which(monocle_cds$Day2 %in% c("28", "60", "90"))] <- "Mid"
+      monocle_cds$Day2[which(monocle_cds$Day2 %in% c("120", "180"))] <- "Late"
+      monocle_cds$Day2 <- factor(monocle_cds$Day2, levels = c("Early", "Mid", "Late"))
+    }
+    
+    ### draw monocle plots
+    p <- plot_cell_trajectory(monocle_cds, color_by = "Day", cell_size = 3, cell_link_size = 3, show_branch_points = FALSE) +
+      labs(color="") +
+      theme_classic(base_size = 36) +
+      theme(legend.position = "top",
+            legend.title = element_text(size = 36),
+            legend.text = element_text(size = 30))
+    ggsave(file = paste0(outputDir2, donor, "_Trajectory_Inference_Time_Monocle2.png"),
+           plot = p,
+           width = 15, height = 10, dpi = 350)
+    
+    p <- plot_complex_cell_trajectory(monocle_cds, color_by = "Day", cell_size = 3, cell_link_size = 3, show_branch_points = FALSE) +
+      labs(color="") +
+      theme_classic(base_size = 36) +
+      theme(legend.position = "top",
+            legend.title = element_text(size = 36),
+            legend.text = element_text(size = 30))
+    ggsave(file = paste0(outputDir2, donor, "_Trajectory_Inference_Time_Complex_Monocle2.png"),
+           plot = p,
+           width = 15, height = 10, dpi = 350)
+    
+    ### additional plots with Day2
+    if(donor == "321-05") {
+      p <- plot_cell_trajectory(monocle_cds, color_by = "Day2", cell_size = 3, cell_link_size = 3, show_branch_points = FALSE) +
+        labs(color="") +
+        theme_classic(base_size = 36) +
+        theme(legend.position = "top",
+              legend.title = element_text(size = 36),
+              legend.text = element_text(size = 30))
+      ggsave(file = paste0(outputDir2, donor, "_Trajectory_Inference_Time2_Monocle2.png"),
+             plot = p,
+             width = 15, height = 10, dpi = 350)
+      
+      p <- plot_complex_cell_trajectory(monocle_cds, color_by = "Day2", cell_size = 3, cell_link_size = 3, show_branch_points = FALSE) +
+        labs(color="") +
+        theme_classic(base_size = 36) +
+        theme(legend.position = "top",
+              legend.title = element_text(size = 36),
+              legend.text = element_text(size = 30))
+      ggsave(file = paste0(outputDir2, donor, "_Trajectory_Inference_Time2_Complex_Monocle2.png"),
+             plot = p,
+             width = 15, height = 10, dpi = 350)
+    }
     
   }
   
